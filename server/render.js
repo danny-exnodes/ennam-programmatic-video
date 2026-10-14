@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import { chromium } from 'playwright-core';
 import { FFMPEG, run } from './media.js';
 import { projectDir } from './store.js';
@@ -34,7 +35,7 @@ export async function getBrowser() {
     browserP = chromium.launch({
       executablePath: findChrome(),
       headless: true,
-      args: ['--disable-web-security', '--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+      args: ['--disable-web-security', '--autoplay-policy=no-user-gesture-required', ...(process.env.RENDER_GPU ? ['--use-gl=angle', '--enable-gpu-rasterization'] : ['--disable-gpu', '--disable-accelerated-2d-canvas', '--disable-gpu-compositing'])],
     }).catch((e) => {
       browserP = null;
       throw new Error('Không mở được Chromium để render. Cài bằng `npx playwright install chromium` hoặc đặt CHROME_PATH. ' + e.message);
@@ -85,7 +86,10 @@ export async function renderProject(project, opts = {}) {
   const outFile = path.join(dir, 'exports', outName);
   const prog = opts.onProgress || (() => {});
 
-  const { page, close, logs } = await openRenderPage(project.id, { override: project, scale: q.scale });
+  // Frames are deterministic, so several headless pages render in parallel
+  // and frames are re-ordered before going into ffmpeg.
+  const nWorkers = Math.max(1, Math.min(Number(process.env.RENDER_WORKERS) || Math.max(1, os.cpus().length - 1), 8, total));
+  const pages = await Promise.all(Array.from({ length: nWorkers }, () => openRenderPage(project.id, { override: project, scale: q.scale })));
   const ff = spawn(FFMPEG, [
     '-y', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', String(q.crf), '-preset', q.preset,
@@ -95,28 +99,48 @@ export async function renderProject(project, opts = {}) {
   let ffErr = '';
   ff.stderr.on('data', (d) => (ffErr = (ffErr + d).slice(-4000)));
   const ffDone = new Promise((res, rej) => ff.on('close', (c) => (c === 0 ? res() : rej(new Error('ffmpeg: ' + ffErr)))));
+  ff.stdin.on('error', () => {});
   const write = (buf) => new Promise((res, rej) => (ff.stdin.write(buf, (e) => (e ? rej(e) : res()))));
   try {
     const t0 = Date.now();
-    for (let f = 0; f < total; f++) {
-      if (opts.signal?.aborted) throw new Error('Đã huỷ');
-      const t = f / fps;
-      const b64 = await page.evaluate(([tt, mb]) => window.__frame(tt, mb), [t, q.mb]);
-      await write(Buffer.from(b64, 'base64'));
-      if (f % 5 === 0 || f === total - 1) {
-        const el = (Date.now() - t0) / 1000;
-        const eta = ((el / (f + 1)) * (total - f - 1)).toFixed(0);
-        prog((f + 1) / total * 0.9, `Khung ${f + 1}/${total} · còn ~${eta}s`);
+    const ready = new Map();
+    let nextWrite = 0, nextFrame = 0, done = 0;
+    let flushing = Promise.resolve();
+    const flush = () => (flushing = flushing.then(async () => {
+      while (ready.has(nextWrite)) {
+        const buf = ready.get(nextWrite);
+        ready.delete(nextWrite);
+        await write(buf);
+        nextWrite++;
       }
-    }
+    }));
+    await Promise.all(pages.map(async ({ page }) => {
+      for (;;) {
+        if (opts.signal?.aborted) throw new Error('Đã huỷ');
+        // backpressure: don't run too far ahead of the writer
+        while (nextFrame - nextWrite > nWorkers * 4) await new Promise((r) => setTimeout(r, 15));
+        const f = nextFrame++;
+        if (f >= total) return;
+        const b64 = await page.evaluate(([tt, mb]) => window.__frame(tt, mb), [f / fps, q.mb]);
+        ready.set(f, Buffer.from(b64, 'base64'));
+        flush();
+        done++;
+        if (done % 5 === 0 || done === total) {
+          const el = (Date.now() - t0) / 1000;
+          const eta = ((el / done) * (total - done)).toFixed(0);
+          prog((done / total) * 0.9, `Khung ${done}/${total} · ${nWorkers} luồng · còn ~${eta}s`);
+        }
+      }
+    }));
+    await flush();
     ff.stdin.end();
     await ffDone;
   } catch (e) {
     try { ff.stdin.end(); ff.kill('SIGKILL'); } catch { /* */ }
     await fsp.rm(videoTmp, { force: true });
-    throw new Error(e.message + (logs.length ? '\n' + logs.slice(-5).join('\n') : ''));
+    throw new Error(e.message + '\n' + pages.flatMap((p) => p.logs.slice(-3)).join('\n'));
   } finally {
-    await close();
+    await Promise.all(pages.map((p) => p.close()));
   }
 
   prog(0.93, 'Trộn âm thanh');

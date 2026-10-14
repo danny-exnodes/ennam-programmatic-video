@@ -474,6 +474,23 @@ function drawMedia(ctx, el, o, W, H, applyCam) {
   }
   if (f.length) ctx.filter = f.join(' ');
   const dx = -w * ax, dy = -h * ay;
+  // Large blurs are expensive on CPU canvas: blur a downscaled copy instead
+  // (visually identical for strong blur, 10–30x cheaper).
+  if (o.blur > 4 && !o.crop) {
+    const k = Math.max(0.08, Math.min(0.5, 3 / o.blur));
+    const sw = Math.max(2, Math.round(w * k)), sh = Math.max(2, Math.round(h * k));
+    const tmp = blurScratch(sw + 8, sh + 8);
+    const tc = tmp.getContext('2d');
+    tc.setTransform(1, 0, 0, 1, 0, 0);
+    tc.clearRect(0, 0, tmp.width, tmp.height);
+    tc.filter = `blur(${(o.blur * k).toFixed(2)}px)`;
+    tc.drawImage(el, 4, 4, sw, sh);
+    tc.filter = 'none';
+    ctx.filter = f.filter((x) => !x.startsWith('blur')).join(' ') || 'none';
+    ctx.drawImage(tmp, 4, 4, sw, sh, dx, dy, w, h);
+    ctx.restore();
+    return { x: x + dx, y: y + dy, w, h, cx: x + dx + w / 2, cy: y + dy + h / 2 };
+  }
   if (o.crop) {
     const [cx, cy, cw, ch] = o.crop; // normalized
     ctx.drawImage(el, cx * iw, cy * ih, cw * iw, ch * ih, dx, dy, w, h);
@@ -495,6 +512,12 @@ function drawMedia(ctx, el, o, W, H, applyCam) {
   }
   ctx.restore();
   return { x: x + dx, y: y + dy, w, h, cx: x + dx + w / 2, cy: y + dy + h / 2 };
+}
+
+let _blurScratch = null;
+function blurScratch(w, h) {
+  if (!_blurScratch || _blurScratch.width < w || _blurScratch.height < h) _blurScratch = makeCanvas(Math.max(w, _blurScratch?.width || 0), Math.max(h, _blurScratch?.height || 0));
+  return _blurScratch;
 }
 
 function blendTransition(target, A, B, type, k) {

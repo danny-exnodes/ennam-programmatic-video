@@ -360,7 +360,6 @@ export function burst(ctx, t, o = {}) {
       ctx.globalAlpha *= fade;
       ctx.translate(px, py);
       ctx.rotate(rot);
-      if (o.motionBlur !== false) ctx.filter = `blur(${Math.min(6, Math.hypot(st.vx, st.vy) / 400)}px)`;
       ctx.drawImage(img, (-s * ar) / 2, -s / 2, s * ar, s);
       ctx.restore();
     } else if (kind === 'confetti' || kind === 'petal') {

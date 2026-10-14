@@ -36,7 +36,7 @@ s.fx.rays({ x: W * 0.35, y: -80, count: 7, opacity: 0.12 });
 // Physical liquid splash: drop falls, crown forms, spikes pinch off droplets, jet rises.
 s.fx.liquidCrown({
   x: W * 0.5, y: H * 0.66, radius: H * 0.2, start: 0.7, material: ${J(material)},
-  tilt: 0.3, energy: 1.1, seed: 7, slowmo: 1.6, pool: ${bg ? 'false' : 'true'},
+  tilt: 0.3, energy: 1.1, seed: 7, slowmo: 1.6, pool: true,
 });
 s.fx.bokeh({ count: 14, size: [30, 90], opacity: 0.18, seed: 4 });
 s.text(${J(headline || 'Sáng mịn, *tươi tắn*')}, { x: W * 0.25, y: H * 0.86, size: 64, weight: 800, anim: 'rise', start: 1.6, align: 'center' });

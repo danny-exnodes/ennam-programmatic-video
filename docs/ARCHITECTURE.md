@@ -1,0 +1,47 @@
+# Kiến trúc
+
+```
+Trình duyệt (editor)                Server Node (Express)                 Chromium headless
+┌───────────────────────┐   REST   ┌───────────────────────────┐  page   ┌─────────────────────┐
+│ public/app/*  (UI)    │ ───────▶ │ server/index.js  (API)    │ ──────▶ │ public/render.html  │
+│ engine/*  (preview)   │          │ store.js  (file-based)    │         │ engine/* (cùng code)│
+└───────────────────────┘          │ director.js ── Claude API │         └─────────┬───────────┘
+                                   │ render.js  ── ffmpeg      │ ◀── JPEG frames ──┘
+                                   │ jobs.js, tts.js, templates│
+                                   └───────────────────────────┘
+```
+
+## Nguyên tắc
+
+1. **Shot là code, engine dùng chung.** Editor và bản xuất chạy *cùng một* `engine/`. Những gì thấy khi xem trước chính là những gì được render.
+2. **Tất định.** Mọi mô phỏng là hàm thuần của thời gian `t`: lò xo, rơi nảy giải tích; hạt (giọt bắn, mảnh vỡ) được tích phân một lần ở 240 Hz rồi cache và lấy mẫu theo `t`. Nhờ vậy tua, xuất song song nhiều luồng, contact sheet đều cho kết quả giống hệt.
+3. **Vật liệu điều khiển cả vật lý lẫn quang học.** `engine/materials.js`: độ nhớt, sức căng bề mặt, mật độ → số gai vương miện, kích thước giọt, tốc độ lan; màu thân/lõi/viền, độ trong, độ bóng, tán xạ → cách vẽ giọt (truyền sáng, caustic, Fresnel, specular).
+4. **AI tự kiểm chứng.** Đạo diễn không chỉ sinh code: server render thử từng shot, bắt lỗi runtime, gửi contact sheet ảnh thật cho Claude tự duyệt và sửa (tối đa 3 vòng).
+
+## Engine (`engine/`)
+
+| File | Vai trò |
+|---|---|
+| `engine.js` | Biên dịch shot, dựng API `s` mỗi khung, camera + thị sai theo depth, layer, chuyển cảnh, motion blur (tích luỹ nhiều mẫu trong 1 khung), đồng bộ video |
+| `math.js` | easing, RNG có seed, nhiễu mượt, lò xo giải tích, rơi–nảy theo hệ số đàn hồi, con lắc |
+| `materials.js` | preset vật liệu + `drawDroplet` (truyền sáng, caustic, viền Fresnel, highlight, kéo giãn theo vận tốc) |
+| `fx/sim.js` | bộ mô phỏng hạt: trọng lực, lực cản, gió, nhiễu loạn, va sàn (nảy/hấp thụ/dính), sinh sự kiện va chạm |
+| `fx/liquid.js` | giọt rơi → vương miện (thành mỏng hình tulip, gai Rayleigh–Plateau thắt cổ thành giọt, bụi nước) → sụp → tia Worthington → gợn sóng mao dẫn; rót chất lỏng; giọt nhỏ giọt |
+| `fx/atmosphere.js` | bokeh, bụi, khói/hơi nước, bọt khí (định luật Stokes), caustics, tia sáng thể tích, sheen thuỷ tinh, lens flare, light leak, burst hạt vật lý |
+| `fx/text.js` | chữ động tiếng Việt (*nhấn màu*), underline, badge, icon |
+| `post.js` | grade màu, bloom, vignette, hạt phim, letterbox |
+
+## Server (`server/`)
+
+- `store.js` — mỗi dự án là một thư mục `data/projects/<id>/` gồm `project.json`, `assets/`, `exports/`, `history/` (snapshot trước mỗi thay đổi lớn).
+- `render.js` — mở N trang Chromium (CPU raster), gọi `window.__frame(t, samples)`, nhận JPEG, sắp xếp lại thứ tự, đẩy vào ffmpeg (x264), sau đó trộn nhạc (fade, offset) + lồng tiếng (adelay) và mux.
+- `director.js` — Claude nhận: tài liệu SHOT API + ví dụ, ảnh chất liệu (vision), JSON dự án, nhiệm vụ. Trả kết quả qua tool có schema (`submit_cut` / `submit_shot`). Sau đó: kiểm tra cú pháp → render thử headless → phản hồi lỗi / contact sheet → sửa.
+- `templates.js` — cảnh mẫu & công thức (cũng là ví dụ few-shot cho đạo diễn).
+- `jobs.js` — hàng đợi job; render chạy tuần tự, đạo diễn chạy song song.
+
+## Mở rộng tiếp theo (gợi ý)
+
+- **Plate video AI cho cảnh cần vật lý phức tạp hơn** (vải, tóc, khói dày, chất lỏng 3D thật): thêm một loại chất liệu "plate" sinh bởi mô hình image-to-video (Seedance/Kling/Veo) rồi dùng `s.video()` làm nền — lớp code vẫn đảm bảo chữ, logo, màu thương hiệu chính xác. API `s.video` đã sẵn sàng.
+- Mô phỏng chất lỏng 2D SPH/FLIP trên WebGL cho cảnh rót/khuấy cận cảnh.
+- Mẫu thương hiệu (brand kit) dùng chung giữa các dự án.
+- Hàng đợi render phân tán nhiều máy.

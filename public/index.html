@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ennam Motion Studio</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="logo">✨</span>
+  <input id="projName" class="proj-name" value="" spellcheck="false" aria-label="Tên dự án">
+  <span id="saveState" class="save-state"></span>
+  <div class="spacer"></div>
+  <button id="btnUndo" class="ghost" title="Lịch sử phiên bản">↺ Lịch sử</button>
+  <button id="btnExport" class="primary">Xuất video</button>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <nav class="tabs" id="tabs">
+      <button data-tab="director" class="active"><i>🎬</i>Đạo diễn AI</button>
+      <button data-tab="quick"><i>✨</i>Nhanh</button>
+      <button data-tab="scenes"><i>🧱</i>Mẫu cảnh</button>
+      <button data-tab="media"><i>🖼️</i>Media</button>
+      <button data-tab="voice"><i>🎙️</i>Lồng tiếng</button>
+      <button data-tab="music"><i>🎵</i>Nhạc</button>
+      <button data-tab="style"><i>🎨</i>Phong cách</button>
+    </nav>
+    <section class="panel" id="panel"></section>
+  </aside>
+
+  <section class="stage">
+    <div class="viewer" id="viewer">
+      <canvas id="preview"></canvas>
+      <div class="viewer-msg" id="viewerMsg"></div>
+    </div>
+    <div class="transport">
+      <button id="btnStart" title="Về đầu (Home)">⏮</button>
+      <button id="btnPrevShot" title="Shot trước">⏪</button>
+      <button id="btnPlay" class="play" title="Phát / dừng (Space)">▶</button>
+      <button id="btnNextShot" title="Shot sau">⏩</button>
+      <span class="timecode" id="timecode">0:00.0 / 0:00.0</span>
+      <select id="previewQuality" title="Độ nét xem trước">
+        <option value="0.5">Xem trước 50%</option>
+        <option value="0.75">75%</option>
+        <option value="1">100%</option>
+      </select>
+      <div class="spacer"></div>
+      <button id="btnExports" class="ghost">🎬 Bản đã xuất</button>
+    </div>
+  </section>
+
+  <aside class="inspector" id="inspector"></aside>
+</main>
+
+<footer class="timeline" id="timeline">
+  <div class="tl-head">
+    <strong id="tlTitle"></strong>
+    <span class="hint">Kéo mép phải shot để đổi độ dài · kéo shot để đổi thứ tự · kéo câu thoại để dời</span>
+    <div class="spacer"></div>
+    <button id="tlZoomOut" class="icon">−</button>
+    <button id="tlZoomIn" class="icon">+</button>
+  </div>
+  <div class="tl-body" id="tlBody">
+    <div class="tl-labels">
+      <div class="tl-ruler-pad"></div>
+      <div class="tl-label">🎬 Shot</div>
+      <div class="tl-label">🎙️ Lồng tiếng</div>
+      <div class="tl-label">🎵 Nhạc</div>
+    </div>
+    <div class="tl-scroll" id="tlScroll">
+      <div class="tl-content" id="tlContent">
+        <div class="tl-ruler" id="tlRuler"></div>
+        <div class="tl-track" id="trackShots"></div>
+        <div class="tl-track" id="trackVoice"></div>
+        <div class="tl-track" id="trackMusic"></div>
+        <div class="tl-playhead" id="playhead"></div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head"><strong id="modalTitle"></strong><button class="icon" id="modalClose">✕</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script type="module" src="/app/main.js"></script>
+</body>
+</html>
