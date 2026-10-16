@@ -8,6 +8,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "seed": "node scripts/seed-demo.js",
+    "seed:nature": "node scripts/seed-nature.js",
     "render:demo": "node scripts/render-cli.js demo",
     "check": "node scripts/check-shots.js"
   },

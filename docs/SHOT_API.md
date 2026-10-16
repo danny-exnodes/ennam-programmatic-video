@@ -79,3 +79,37 @@ Khi xuất, motion blur (nhiều mẫu/khung) được áp tự động.
 
 ## Chuyển cảnh (trường `transition` của shot)
 `cut fade dissolve flash push zoom whip blur wipe rise`, `duration` giây. Shot trước tiếp tục chạy trong thời gian chuyển cảnh (t > d).
+
+## Thiên nhiên 3D — `s.nature(...)` (gió, lá rơi, nước chảy, giọt sương)
+Một thế giới 3D thật (đơn vị **mét**, trục Y hướng lên, mặt nước ở `Y = 0`, camera nhìn theo +Z) dùng chung **một trường gió** và **một đồng hồ**:
+lá rơi, cỏ lau, lá có sương và mặt nước đều phản ứng với cùng một cơn gió; lá/giọt rơi xuống nước tạo gợn sóng thật (mô phỏng sóng),
+mọi thứ phía trên nước được phản chiếu (phản xạ phẳng bị méo theo pháp tuyến sóng). Nước và lá chính được tô bằng WebGL2.
+
+```js
+const sc = s.nature({
+  camera: { x, height: 0.5, z, pitch: 0.12, yaw: 0, fov: 45, focus: 3, aperture: 10 }, // focus/aperture = độ sâu trường ảnh
+  wind: { speed: 1.3, dir: 0.1, gust: 1, gusts: [{ t: 1.0, amp: 1.7, dur: 1.4 }], turbulence: 0.35, seed },
+  sun: { elevation: 0.3, azimuth: -0.4, intensity: 1.1 },   // azimuth là hướng thế giới (0 = phía trước +Z)
+  sky: { top: '#6c98c0', horizon: '#f0e4c2' },
+  time,            // tuỳ chọn: thời gian mô phỏng (dùng để quay chậm / speed ramp), mặc định s.t
+});
+sc.sky();
+sc.treeline({ z: 18, height: 5.5, color: '#2b4123' });           // bờ cây xa, có phản chiếu
+sc.water({ flow: [0.45, 0], depth: 0.4, farZ: 17.6, foam: 0.3 });  // gọi TRƯỚC sc.leaves để lá biết nổi trên nước
+sc.reeds({ x: [-2.4, -1.4], z: [1.6, 3.2], count: 30, height: [0.45, 1.05] });
+sc.leaves({ count: 30, start: -6, end: 6, colors: 'autumn', z: [1.2, 5], size: [0.04, 0.07] });
+const leaf = sc.leaf({ anchor: [x, y, z], yaw, pitch: 0.3, length: 0.095, drops: [{ u: 0.3, v: 0.06, r: 0.003 }, ...], releaseBy: 4.3 });
+sc.render();      // vẽ theo đúng thứ tự: trời → bờ → phản chiếu → nước → lá nổi → lá bay → lá chính + sương
+```
+| Hàm | Ý nghĩa & tham số |
+|---|---|
+| `sc.water` | `flow:[vx,vz]` m/s (dòng chảy, gợn sóng trôi theo), `depth`, `color`, `clarity`, `farZ` (nước kết thúc ở bờ xa), `foam`, `chop` (độ gợn do gió), `wavelength:[min,max]`, `caustics`, `bedA/bedB` (màu sỏi đáy), `blur` (mặc định tự tính theo DOF), `res` (độ phân giải shading 0.5–1), `simArea:[x0,z0,x1,z1]`, `ripples:false` |
+| `sc.leaves` | Lá rơi khí động học (đong đưa, lượn, lộn vòng, bị gió cuốn), chạm nước thì nổi và trôi theo dòng. `count, start, end, colors:'autumn'|'green'|'spring'|'mixed'|[...], size:[a,b]` (nửa chiều dài, m), `z:[a,b]`, `area`, `tumble` (tỉ lệ lá lộn vòng), `flutter` |
+| `sc.reeds` | Cỏ lau/ cỏ ven bờ uốn theo gió (gió giật quét qua từ phía đầu gió). `x, z, count, height, color, stiffness` |
+| `sc.leaf` | Lá chính có giọt sương: lá đung đưa theo gió + trọng lượng giọt; giọt bị ghim cho tới khi trọng lực thắng (giọt to mới trượt), gom giọt nhỏ trên đường, treo ở mũi lá, rơi theo định luật Tate (hoặc `releaseBy` giây), rơi xuống nước → hố + tia Worthington + giọt phụ + gợn sóng. Trả về `{ slide, tip, release, impact, impactAt }` (giây mô phỏng) để căn camera/chữ. Tham số: `anchor, yaw, pitch, roll, length, width, curve, color, color2, drops:[{u,v,r}]` (u 0→1 từ cuống tới mũi, v −1..1 ngang lá, r bán kính m), `freq, windGain, loadGain, pin, tipRadius, drag, twig` |
+| `sc.backdrop(fn,{z})` | Vẽ phông tuỳ ý ở độ sâu z (fn nhận `ctx, project, mirror`) — có phản chiếu |
+| `sc.impulse({t,x,z,r,amp})` | Thêm một cú chạm mặt nước tuỳ ý |
+| `sc.project(x,y,z)` | Toạ độ thế giới → `[sx, sy, depth]` trên khung |
+
+Mẹo: quay chậm bằng `time` (ví dụ `time: T0 - 0.12 + 0.2 * s.t`), cả lá, nước, gió đều chậm theo. Hai shot dùng chung `wind` + `leaf` sẽ cho cùng một giọt nước — dùng `s.nature({ wind }).leaf(LEAF).impact[0]` để biết thời điểm chạm nước. Xem ví dụ đầy đủ ở `examples/nature/`.
+Không dùng `s.camera(...)` 2D cho cảnh nature; chuyển động camera đặt trong `camera` của `s.nature`.

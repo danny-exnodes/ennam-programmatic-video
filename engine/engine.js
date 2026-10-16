@@ -9,6 +9,10 @@ import * as A from './fx/atmosphere.js';
 import { text, underline, badge, icon, ICON_NAMES, FONTS } from './fx/text.js';
 import { applyPost, GRADES } from './post.js';
 import { clearSimCache } from './fx/sim.js';
+import { natureScene } from './fx/nature.js';
+import { clearWaterCache } from './fx/water.js';
+import { clearFoliageCache } from './fx/foliage.js';
+import { clearDewCache } from './fx/dew.js';
 
 export { MATERIALS, GRADES, ICON_NAMES };
 
@@ -247,6 +251,8 @@ export class Engine {
         });
       },
       fx: {},
+      /** 3D nature scene (water, wind, leaves, dew) — see SHOT_API "Thiên nhiên 3D". */
+      nature: (o = {}) => natureScene(s, eng, o),
       physics: {
         drop: (o = {}) => M.dropBounce(localT - (o.delay ?? 0), o),
         spring: (o = {}) => M.spring(localT - (o.delay ?? 0), o),
@@ -423,6 +429,9 @@ export class Engine {
 
   reset() {
     clearSimCache();
+    clearWaterCache();
+    clearFoliageCache();
+    clearDewCache();
   }
 }
 

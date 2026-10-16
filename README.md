@@ -16,6 +16,7 @@ npx playwright install chromium        # nếu máy chưa có Chromium (hoặc �
 cp .env.example .env                   # điền ANTHROPIC_API_KEY để bật Đạo diễn AI
 npm start                              # http://localhost:5173
 npm run seed                           # (tuỳ chọn) tạo dự án demo "Lumi C+"
+npm run seed:nature                    # (tuỳ chọn) demo vật lý thiên nhiên: gió, lá rơi, nước chảy, giọt sương
 ```
 
 Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.

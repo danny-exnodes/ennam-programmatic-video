@@ -29,6 +29,11 @@ Trình duyệt (editor)                Server Node (Express)                 Chr
 | `fx/liquid.js` | giọt rơi → vương miện (thành mỏng hình tulip, gai Rayleigh–Plateau thắt cổ thành giọt, bụi nước) → sụp → tia Worthington → gợn sóng mao dẫn; rót chất lỏng; giọt nhỏ giọt |
 | `fx/atmosphere.js` | bokeh, bụi, khói/hơi nước, bọt khí (định luật Stokes), caustics, tia sáng thể tích, sheen thuỷ tinh, lens flare, light leak, burst hạt vật lý |
 | `fx/text.js` | chữ động tiếng Việt (*nhấn màu*), underline, badge, icon |
+| `fx/nature.js` | cảnh thiên nhiên 3D: camera pinhole (mét), phối cảnh, độ sâu trường ảnh, phản chiếu phẳng, thứ tự vẽ |
+| `fx/wind.js` | trường gió dùng chung: gió giật lan theo mặt trước gió, nhiễu loạn "đóng băng" trôi theo gió (JS + GLSL giống hệt) |
+| `fx/water.js` | mặt nước WebGL2: sóng gió có tán sắc mao dẫn–trọng lực, mô phỏng trường độ cao (phương trình sóng + số hạng song điều hoà), Fresnel, khúc xạ đáy sỏi + caustics, lấp lánh mặt trời |
+| `fx/foliage.js` | lá rơi theo mô hình tấm mỏng khí động học (Andersen–Pesavento–Wang), cỏ lau là dao động tắt dần chịu lực cản gió |
+| `fx/dew.js`, `fx/leafgl.js` | lá chính + giọt sương (ghim/ trượt/ gom/ treo/ rơi), shader lá theo pixel (gân lá, xuyên sáng, sáp bóng) |
 | `post.js` | grade màu, bloom, vignette, hạt phim, letterbox |
 
 ## Server (`server/`)
@@ -43,5 +48,6 @@ Trình duyệt (editor)                Server Node (Express)                 Chr
 
 - **Plate video AI cho cảnh cần vật lý phức tạp hơn** (vải, tóc, khói dày, chất lỏng 3D thật): thêm một loại chất liệu "plate" sinh bởi mô hình image-to-video (Seedance/Kling/Veo) rồi dùng `s.video()` làm nền — lớp code vẫn đảm bảo chữ, logo, màu thương hiệu chính xác. API `s.video` đã sẵn sàng.
 - Mô phỏng chất lỏng 2D SPH/FLIP trên WebGL cho cảnh rót/khuấy cận cảnh.
+- Lộ trình nâng cấp độ chân thực: xem [REALISM_PLAN.md](REALISM_PLAN.md).
 - Mẫu thương hiệu (brand kit) dùng chung giữa các dự án.
 - Hàng đợi render phân tán nhiều máy.
