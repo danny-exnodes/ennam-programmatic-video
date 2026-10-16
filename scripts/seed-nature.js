@@ -48,7 +48,7 @@ await run(FFMPEG, [
     // slow-motion plips: pitch-dropped, decaying
     `[2]asetrate=44100*0.55,aresample=44100,afade=t=out:st=0:d=0.33,volume=0.9,adelay=${Math.round(plip1 * 1000)}|${Math.round(plip1 * 1000)}[p1]`,
     `[3]asetrate=44100*0.6,aresample=44100,afade=t=out:st=0:d=0.24,volume=0.5,adelay=${Math.round(plip2 * 1000)}|${Math.round(plip2 * 1000)}[p2]`,
-    `[w][s][p1][p2]amix=inputs=4:normalize=0,aecho=0.6:0.5:60:0.2,alimiter=limit=0.9[a]`,
+    `[w][s][p1][p2]amix=inputs=4:normalize=0,aecho=0.6:0.5:60:0.2,volume=15dB,alimiter=limit=0.9[a]`,
   ].join(';'),
   '-map', '[a]', '-t', String(total), '-b:a', '160k', audio,
 ]);
