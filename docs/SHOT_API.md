@@ -113,3 +113,15 @@ sc.render();      // vẽ theo đúng thứ tự: trời → bờ → phản chi
 
 Mẹo: quay chậm bằng `time` (ví dụ `time: T0 - 0.12 + 0.2 * s.t`), cả lá, nước, gió đều chậm theo. Hai shot dùng chung `wind` + `leaf` sẽ cho cùng một giọt nước — dùng `s.nature({ wind }).leaf(LEAF).impact[0]` để biết thời điểm chạm nước. Xem ví dụ đầy đủ ở `examples/nature/`.
 Không dùng `s.camera(...)` 2D cho cảnh nature; chuyển động camera đặt trong `camera` của `s.nature`.
+
+### Thiên nhiên 3D — phần mở rộng (núi rừng, đá suối, lá tiền cảnh, chim én, chai sản phẩm)
+| Hàm | Ý nghĩa & tham số |
+|---|---|
+| `sc.landscape(o)` | Phông núi rừng tô theo pixel (thay `sc.sky()+sc.treeline()`): bầu trời có mặt trời & mây, 4 lớp núi tan vào sương, mặt rừng nhìn từ trên cao (khi camera cao), bìa rừng gồm từng tán cây có viền ngược sáng và lỗ trời xuyên tán, hàng cây thứ hai mờ hơn phía sau. Có phản chiếu. `forestZ` (m, -1 = không có bìa rừng), `treeHeight`, `crown` (cỡ tán, m), `mist`, `fog`, `clouds`, `holes`, `mountains` (0..1.5, false), `mountainScale`, `mountainNear/mountainFar/forestColor/forestColor2/bank/haze` (màu), `res`, `blur` |
+| `sun.rays` (trong `s.nature({sun})`) | Tia nắng thể tích (crepuscular rays) 0..1.5, bị tán lá/đá che tự nhiên. `sun.raysOpts: {threshold, decay, density, color}` |
+| `sc.rocks([...])` | Đá suối dạng lưới 3D (WebGL): `{x, z, r, h, color, mossColor, seed, wet}`. Nước tự tạo cổ bọt quanh đá, vệt xoáy & sóng chữ V phía hạ lưu theo `flow`; đá được phản chiếu |
+| `sc.foliage(o)` | Lá tiền cảnh mờ (bokeh) đung đưa theo gió, viền khung hình: `side:'left'|'right'|'top', depth (m), count, size, color, color2, reach, y, blur` |
+| `sc.swallows(o)` | Đàn chim én (đập cánh nhanh xen lượn): `count, from:[x,y,z], to:[x,y,z], start, dur, spread, size, color, seed` |
+| `sc.bottle(o)` | Chai nước PET trong suốt (WebGL): khúc xạ cảnh sau như thấu kính trụ, Fresnel, dải sáng, nhãn quấn trụ, nắp có gờ, màng hơi lạnh + giọt đọng (một số giọt chảy xuống để lại vệt). `x, y, z` (đáy chai, m), `height, radius, cap` (màu nắp), `fill` (mực nước 0..1), `frost`, `drops`, `tint`, `label:{name, subtitle, tagline, volume, color, color2}` hoặc `label:false` |
+
+Ví dụ hoàn chỉnh TVC 30 giây: `examples/tvc-en-nam/` (`npm run seed:tvc`).

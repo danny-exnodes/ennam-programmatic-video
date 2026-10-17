@@ -17,6 +17,8 @@ cp .env.example .env                   # điền ANTHROPIC_API_KEY để bật �
 npm start                              # http://localhost:5173
 npm run seed                           # (tuỳ chọn) tạo dự án demo "Lumi C+"
 npm run seed:nature                    # (tuỳ chọn) demo vật lý thiên nhiên: gió, lá rơi, nước chảy, giọt sương
+npm run seed:tvc                       # (tuỳ chọn) TVC 30s Én Nam (xem docs/TVC_EN_NAM.md)
+npm run library -- --provider pexels --query "forest stream" --type video   # tải chất liệu có giấy phép (library/sources.json)
 ```
 
 Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.

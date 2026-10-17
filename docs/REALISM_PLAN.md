@@ -34,6 +34,15 @@ Giữ nguyên kiến trúc (shot là code, tất định theo `t`, editor = bả
 
 Chi phí: ~1–1.8 s/mẫu ở 1080p trên 2 nhân CPU (nước tô ở 0.5–0.7 độ phân giải rồi phóng lên). Với motion blur 3 mẫu, 16 s video ≈ 20–30 phút trên máy 2 nhân; máy có GPU đặt `RENDER_GPU=1` sẽ nhanh hơn nhiều.
 
+## 2b. Đợt 2 (TVC Én Nam)
+
+- **Phông núi rừng WebGL** (`fx/landscape.js`): bầu trời, 4 lớp núi tan vào sương, mặt rừng nhìn từ trên cao, bìa rừng gồm từng tán cây (tán con dạng súp lơ, viền ngược sáng, lỗ trời), hàng cây phía sau.
+- **Tia nắng thể tích**: tích luỹ ánh sáng theo hướng mặt trời trong không gian màn hình, bị tán lá/đá/chim che.
+- **Đá suối dạng lưới 3D** (`fx/rockgl.js`) + **vệt dòng chảy** trong shader nước: cổ bọt quanh đá, xoáy loang và sóng chữ V phía hạ lưu.
+- **Lá tiền cảnh** dùng chung shader lá, **chim én** đập cánh/lượn, **chai PET** (`fx/bottle.js`) khúc xạ như thấu kính trụ, nhãn quấn trụ, hơi lạnh và giọt đọng.
+- **Âm thanh**: nhạc nền tổng hợp (`scripts/audio/tvc_music.py`), lồng tiếng Việt offline (Piper), mix có ducking (`build_tvc_audio.sh`).
+- **Thư viện chất liệu**: `library/sources.json` (giấy phép, được dùng quảng cáo hay không) + `scripts/library-import.js` tải từ Pexels/Pixabay/Openverse/Poly Haven kèm file thông tin giấy phép.
+
 ## 3. Lộ trình tiếp theo (đề xuất, theo thứ tự lợi ích/chi phí)
 
 1. **Nước gần camera bằng mô phỏng GPU** — chuyển mô phỏng trường độ cao lên shader (ping-pong texture) để tăng lưới lên 1024² và có thêm tương tác vật nổi ↔ sóng (lá bị sóng đẩy). Ước tính 2–3 ngày.

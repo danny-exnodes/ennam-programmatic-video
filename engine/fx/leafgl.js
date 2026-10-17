@@ -199,9 +199,11 @@ export function renderLeafGL(g, P, cam, sun, sky, scale, o = {}) {
     S.meshKey = mk;
   }
   gl.viewport(0, 0, pw, ph);
-  gl.clearColor(0, 0, 0, 0);
-  gl.clearDepth(1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (!o.keep) {
+    gl.clearColor(0, 0, 0, 0);
+    gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
   gl.enable(gl.DEPTH_TEST);
   gl.useProgram(S.prog);
   const U = S.U;

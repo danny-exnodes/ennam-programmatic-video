@@ -225,6 +225,8 @@ uniform float uHazeDist;
 uniform vec3 uDeep, uBedA, uBedB, uAbsorb;
 uniform float uDepth, uClarity, uFarZ, uFlowDetail, uFoam, uCaustics, uBedScale;
 uniform float uYMin;      // logical y above which nothing is drawn
+uniform vec4 uRocks[8];   // x, z, radius, 0
+uniform int uNRocks;
 uniform int uDebug;
 ${GLSL_WIND}
 
@@ -326,6 +328,40 @@ void main() {
     float nz = vnoise(q1 + vec3(0, e*s1, 0)) * aa1 + 0.5 * vnoise(q2 + vec3(0, e*s2, 0)) * aa2;
     grad += uFlowDetail * 0.012 * vec2(nx - n0, nz - n0) / e;
   }
+  // ---- rocks: pillow + turbulent wake downstream, foam ----
+  float rockFoam = 0.0;
+  if (uNRocks > 0) {
+    vec2 fd = length(uFlow) > 1e-3 ? normalize(uFlow) : vec2(1.0, 0.0);
+    vec2 fn = vec2(-fd.y, fd.x);
+    float fs = length(uFlow);
+    for (int i = 0; i < 8; i++) {
+      if (i >= uNRocks) break;
+      vec2 rel = P.xz - uRocks[i].xy;
+      float r = uRocks[i].z;
+      float sAl = dot(rel, fd), nC = dot(rel, fn);
+      float dist = length(rel);
+      // foam collar hugging the rock, thicker upstream
+      float ang = atan(rel.y, rel.x);
+      float jit = 1.0 + 0.22 * (vnoise(vec3(ang * 2.5, t * 0.8, float(i))) );
+      float collar = smoothstep(r * 1.5 * jit, r * 1.05, dist) * smoothstep(r * 0.8, r * 1.0, dist);
+      collar *= (0.45 + 0.55 * smoothstep(0.5 * r, -r, sAl)) * smoothstep(-0.25, 0.45, vnoise(vec3(rel / r * 3.0 - fd * t * 2.0, t)));
+      // wake: widening, decaying turbulence downstream
+      float ds = max(sAl, 0.0);
+      float width = r * (1.0 + 0.45 * ds / r);
+      float wake = step(0.0, sAl) * exp(-ds / (r * 6.0)) * exp(-pow(nC / width, 2.0)) * smoothstep(r * 0.9, r * 1.3, dist);
+      vec2 wq = vec2(sAl - fs * t * 0.6, nC) / r;
+      float e = 0.15;
+      float w0 = vnoise(vec3(wq * 2.2, t * 1.4)), wx = vnoise(vec3((wq + vec2(e, 0.0)) * 2.2, t * 1.4)), wz = vnoise(vec3((wq + vec2(0.0, e)) * 2.2, t * 1.4));
+      vec2 wg = vec2(wx - w0, wz - w0) / (e * r);
+      vec2 g2 = wg.x * fd + wg.y * fn;
+      grad += g2 * 0.035 * (wake + collar * 0.6) * min(1.5, fs * 3.0 + 0.3);
+      // standing V-waves off the rock
+      float kv = 6.2831 / (r * 0.9);
+      grad += fn * sign(nC) * 0.06 * wake * cos(kv * (abs(nC) - 0.35 * ds)) * min(1.0, fs * 3.0);
+      rockFoam = max(rockFoam, collar * 0.9 + wake * smoothstep(0.55, 0.85, vnoise(vec3(wq * vec2(1.2, 3.5), t * 0.8))) * 0.7);
+    }
+  }
+
   // ---- simulated ripples ----
   if (uHasSim > 0.5) {
     vec2 sp2 = adv;
@@ -384,6 +420,7 @@ void main() {
   float glint = pow(nh, sharp) * sharp * 0.0016 + pow(nh, 400.0) * 0.12;
   col += toLin(uSunCol) * glint * uSunPower * (0.25 + F) * 3.0;
 
+  if (rockFoam > 0.0) col = mix(col, toLin(vec3(0.86, 0.88, 0.85)), clamp(rockFoam, 0.0, 0.85));
   // ---- foam streaks ----
   if (uFoam > 0.0) {
     // thin bubble lines stretched along the current, gathered in patches
@@ -473,7 +510,7 @@ export function renderWater(ctx, sc, Wt) {
   const fullW = Math.round(sc.cam.W * sc.scale), fullH = Math.round(sc.cam.H * sc.scale);
   // shading resolution: the water is smooth (and usually defocused), so it is
   // shaded at reduced resolution and upsampled — 3–4× cheaper on CPU GL
-  const rs = Wt.opts.res ?? ((Wt.opts.blur ?? 0) > 1.5 ? 0.5 : 0.7);
+  const rs = Wt.opts.res ?? ((Wt.opts.blur ?? 0) > 1.5 ? 0.5 : 0.85);
   const pw = Math.max(2, Math.round(fullW * rs)), ph = Math.max(2, Math.round(fullH * rs));
   const S = getGL(pw, ph);
   const { gl, U } = S;
@@ -528,6 +565,11 @@ export function renderWater(ctx, sc, Wt) {
   gl.uniform1f(U.uBedScale, o.bedScale ?? 14);
   gl.uniform1f(U.uYMin, Math.max(0, o.top ?? 0));
   gl.uniform1i(U.uDebug, { refl: 1, refr: 2, fresnel: 3 }[o.debug] || 0);
+  const rocks = (o.rocks || []).slice(0, 8);
+  const rk = new Float32Array(32);
+  rocks.forEach((r, i) => rk.set([r.x, r.z, r.r, 0], i * 4));
+  gl.uniform4fv(U.uRocks, rk);
+  gl.uniform1i(U.uNRocks, rocks.length);
   // reflection texture
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, S.texRefl);

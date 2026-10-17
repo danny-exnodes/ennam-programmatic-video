@@ -13,10 +13,13 @@
 //   const info = sc.render();
 import { clamp, rgba, mix, fbm, rng, TAU, lerp } from '../math.js';
 import { makeCamera } from './camera3d.js';
-import { makeWind } from './wind.js';
+import { makeWind, gustAt } from './wind.js';
 import { makeWaves, getWaveSim, renderWater, waveHeight } from './water.js';
 import { simulateLeaves, sampleLeaf, leafFrame, drawLeaf3D, simulateReeds, drawReeds, add, scl } from './foliage.js';
 import { renderLeafGL } from './leafgl.js';
+import { renderLandscape, lightShafts } from './landscape.js';
+import { renderRocksGL } from './rockgl.js';
+import { renderBottleGL, condensation } from './bottle.js';
 import { simulateDew, sampleDew, leafGeometry, drawHeroLeaf, drawTwig, drawLensDrop, pendantShape, DROP_STATE } from './dew.js';
 
 const canvases = new Map();
@@ -95,6 +98,10 @@ export function natureScene(s, eng, o = {}) {
   const leafSets = [];
   const reedSets = [];
   const heroes = [];
+  const foregrounds = [];
+  const rockList = [];
+  const bottles = [];
+  const birdSets = [];
   let waterOpts = null;
   const extraImpulses = [];
 
@@ -108,6 +115,12 @@ export function natureScene(s, eng, o = {}) {
       return sc;
     },
     /** Far bank of trees (layered silhouettes, aerial haze, sun specks), reflected in the water. */
+    /** Mountains, sky, forest edge — per-pixel (GL), reflected in the water. Replaces sky()+treeline(). */
+    landscape(opt = {}) {
+      Object.assign(sky, { top: opt.skyTop ?? sky.top, horizon: opt.skyHorizon ?? sky.horizon });
+      backdrops.push({ z: Infinity, landscape: true, opt });
+      return sc;
+    },
     treeline(opt = {}) {
       backdrops.push({ z: opt.z ?? 12, draw: (c, mirror) => drawTreeline(c, cam, mirror ? PM : P, opt, sky, sun, time, mirror), blur: opt.blur });
       return sc;
@@ -144,6 +157,26 @@ export function natureScene(s, eng, o = {}) {
       waterOpts = { flow: [0, 0], ...opt };
       return sc;
     },
+    /** Rocks standing in the water: [{x, z, r, h}] — wakes & foam in the current, reflected. */
+    rocks(list = []) {
+      rockList.push(...list);
+      return sc;
+    },
+    /** Out-of-focus foreground foliage framing the shot. {side:'left'|'right'|'top', depth, count, color, size} */
+    foliage(opt = {}) {
+      foregrounds.push({ kind: 'foliage', opt });
+      return sc;
+    },
+    /** Hero product bottle standing at world {x, y, z}: {height, radius, cap, label:{...}, frost, drops, fill} */
+    bottle(opt = {}) {
+      bottles.push(opt);
+      return sc;
+    },
+    /** Swallows in flight: {count, from:[x,y,z], to:[x,y,z], start, dur, spread, seed, size} */
+    swallows(opt = {}) {
+      birdSets.push(opt);
+      return sc;
+    },
     impulse(im) {
       extraImpulses.push(im);
       return sc;
@@ -173,6 +206,14 @@ export function natureScene(s, eng, o = {}) {
     // ---- backdrops (sky, far bank) ----
     backdrops.sort((a, b) => b.z - a.z);
     for (const b of backdrops) {
+      if (b.landscape) {
+        const fz = b.opt.forestZ ?? 18;
+        const lb = (b.opt.blur ?? 0) + cam.blurAt(Math.max(1, fz - cam.pos[2]));
+        const sceneInfo = { cam, sun, sky, time, scale, wind };
+        renderLandscape(ctx, sceneInfo, b.opt, false, pw, ph, lb * scale);
+        renderLandscape(rc, sceneInfo, b.opt, true, rw, rh, lb * scale * rk * 1.2);
+        continue;
+      }
       const blur = (b.blur ?? 0) + (Number.isFinite(b.z) ? cam.blurAt(b.z) : cam.blurAt(1e4));
       blurDraw(ctx, scale, pw, ph, blur, (c) => b.draw(c, false), 'bd');
       blurDraw(rc, scale * rk, rw, rh, blur * 1.2, (c) => b.draw(c, true), 'bdr');
@@ -212,6 +253,11 @@ export function natureScene(s, eng, o = {}) {
 
     tick('waterSim', T0); T0 = now();
     // ---- reflections of things above the water ----
+    if (rockList.length) {
+      try { rc.drawImage(renderRocksGL(rockList, P, cam, sun, sky, rw, rh, scale * rk, true), 0, 0, W, H); }
+      catch { for (const r of rockList) drawRock(rc, PM, r, sun, true, time); }
+    }
+    for (const b of birdSets) drawSwallows(rc, PM, b, time, cam, true);
     for (const rs of reedSets) drawReeds(rc, rs.R, time, PM, sun, { ...rs.opt, alpha: 0.9 });
     for (const ls of leafSets) {
       for (const lf of ls.S.leaves) {
@@ -236,10 +282,19 @@ export function natureScene(s, eng, o = {}) {
         const hit = cam.unproject(W / 2, Math.max(hy + 20, H * 0.7));
         wblur = hit ? Math.min(40, cam.blurAt(Math.hypot(hit[0] - cam.pos[0], hit[1] - cam.pos[1], hit[2] - cam.pos[2]))) : 0;
       }
-      renderWater(ctx, { cam, wind, sun, sky, time, scale, refl }, { ...Wt, opts: { ...waterOpts, blur: wblur } });
+      renderWater(ctx, { cam, wind, sun, sky, time, scale, refl }, { ...Wt, opts: { ...waterOpts, blur: wblur, rocks: rockList } });
     }
 
     tick('waterGL', T0); T0 = now();
+    // ---- rocks in the stream ----
+    if (rockList.length) {
+      const zs = rockList.map((r) => P(r.x, 0, r.z)[2]);
+      const rb = cam.blurAt(zs.reduce((a, b) => a + b, 0) / zs.length);
+      const sorted = rockList.slice().sort((a, b) => P(b.x, 0, b.z)[2] - P(a.x, 0, a.z)[2]);
+      let rcv = null;
+      try { rcv = renderRocksGL(sorted, P, cam, sun, sky, pw, ph, scale, false); } catch { rcv = null; }
+      blurDraw(ctx, scale, pw, ph, rb, (c) => { if (rcv) c.drawImage(rcv, 0, 0, W, H); else for (const r of sorted) drawRock(c, P, r, sun, false, time); }, 'rk');
+    }
     // ---- reeds (drawn after water so their bases sit in it) ----
     for (const rs of reedSets) {
       const zMid = (rs.opt.z[0] + rs.opt.z[1]) / 2;
@@ -307,9 +362,120 @@ export function natureScene(s, eng, o = {}) {
     for (const h of heroes) drawHero(ctx, h, info, Wt);
     tick('hero', T0); T0 = now();
 
+    for (const b of bottles) drawBottle(ctx, b);
     drawAir((d) => d <= heroDepth);
+    for (const b of birdSets) {
+      const bd = cam.blurAt(Math.hypot((b.from?.[2] ?? 30) - cam.pos[2], 1));
+      blurDraw(ctx, scale, pw, ph, bd, (c) => drawSwallows(c, P, b, time, cam, false), 'bd2');
+    }
+    for (const f of foregrounds) drawForeground(ctx, f);
+    tick('foreground', T0); T0 = now();
+    if (sun.screen && (o.sun?.rays ?? 0) > 0) lightShafts(ctx, sun.screen, W, H, pw, ph, { intensity: 2.2 * o.sun.rays, ...(o.sun.raysOpts || {}) });
+    tick('rays', T0);
     ctx.restore();
     return info;
+  }
+
+  function drawBottle(ctx, b) {
+    const Hh = b.height ?? 0.21, Rr = b.radius ?? 0.032;
+    const pb = P(b.x, b.y ?? 0, b.z), pt = P(b.x, (b.y ?? 0) + Hh, b.z);
+    if (!(pb[2] > 0.02 && pt[2] > 0.02)) return;
+    const geo = { base: [pb[0], pb[1]], top: [pt[0], pt[1]], rBase: Rr * cam.scaleAt(pb[2]), rTop: Rr * cam.scaleAt(pt[2]) };
+    const lx = sun.screenDir.x;
+    // contact shadow + focused caustic light on the surface behind/beside the bottle
+    ctx.save();
+    const sh = ctx.createRadialGradient(pb[0] - lx * geo.rBase * 1.2, pb[1], 0, pb[0] - lx * geo.rBase * 1.2, pb[1], geo.rBase * 2.6);
+    sh.addColorStop(0, 'rgba(0,0,0,0.28)');
+    sh.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sh;
+    ctx.beginPath();
+    ctx.ellipse(pb[0] - lx * geo.rBase * 1.2, pb[1], geo.rBase * 2.2, geo.rBase * 0.32, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const cg = ctx.createRadialGradient(pb[0] - lx * geo.rBase * 2.2, pb[1] + geo.rBase * 0.05, 0, pb[0] - lx * geo.rBase * 2.2, pb[1], geo.rBase * 1.1);
+    cg.addColorStop(0, 'rgba(255,250,225,0.22)');
+    cg.addColorStop(1, 'rgba(255,250,225,0)');
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.ellipse(pb[0] - lx * geo.rBase * 2.0, pb[1], geo.rBase * 0.8, geo.rBase * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    const snap = canvasFor('snapB', pw, ph);
+    const sx = snap.getContext('2d');
+    sx.setTransform(1, 0, 0, 1, 0, 0);
+    sx.clearRect(0, 0, pw, ph);
+    sx.drawImage(ctx.canvas, 0, 0);
+    let out;
+    try { out = renderBottleGL(geo, snap, scale, pw, ph, { ...b, time }, sun); } catch (e) { return; }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(out.canvas, out.box[0], out.box[1]);
+    ctx.restore();
+    // condensation drops (and a few running down)
+    const drops = condensation({ seed: b.seed ?? 21, count: b.drops ?? 70 });
+    const light = sun.screenDir;
+    const prof = (v) => (v < 0.56 ? 1 : v < 0.79 ? 1 - 0.58 * (0.5 - 0.5 * Math.cos(Math.PI * (v - 0.56) / 0.23)) : 0.42);
+    for (const d of drops) {
+      let v = d.v;
+      if (d.run >= 0 && time > d.run) v = Math.max(0.03, v - (time - d.run) * 0.035);
+      const cx = geo.base[0] + (geo.top[0] - geo.base[0]) * v;
+      const cy = geo.base[1] + (geo.top[1] - geo.base[1]) * v;
+      const rpx = geo.rBase + (geo.rTop - geo.rBase) * v;
+      const R = prof(v);
+      const x = cx + d.u * R * rpx;
+      const rr = d.r * rpx;
+      const fs = Math.sqrt(Math.max(0.05, 1 - d.u * d.u));
+      if (d.run >= 0 && time > d.run) {
+        // the clear trail a running drop leaves in the frost
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = rr * fs * 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x, cy);
+        ctx.lineTo(x, geo.base[1] + (geo.top[1] - geo.base[1]) * d.v);
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawLensDrop(ctx, snap, scale, x, cy, rr * fs, rr * 1.05, { light, mode: 'ball', fov: 4, lookUp: 0.5, rim: 0.8 });
+    }
+  }
+
+  function drawForeground(ctx, f) {
+    const o2 = f.opt;
+    const depth = o2.depth ?? 0.35;
+    const side = o2.side ?? 'left';
+    const r = rng(o2.seed ?? 5);
+    const n = o2.count ?? 7;
+    const toWorld = (sx, sy, d) => {
+      const a = (sx - W / 2) / cam.f, b = -(sy - H / 2) / cam.f;
+      return [0, 1, 2].map((k) => cam.pos[k] + d * (cam.F[k] + a * cam.R[k] + b * cam.U[k]));
+    };
+    const corner = side === 'left' ? [-W * 0.08, H * (o2.y ?? 0.15)] : side === 'right' ? [W * 1.08, H * (o2.y ?? 0.2)] : [W * (o2.x ?? 0.7), -H * 0.1];
+    const inward = side === 'left' ? [1, 0.35] : side === 'right' ? [-1, 0.3] : [-0.2, 1];
+    const reach = (o2.reach ?? 0.32) * W;
+    const g0 = gustAt(wind, cam.pos[0], cam.pos[2] + depth, time);
+    let first = true;
+    let glc = null;
+    for (let i = 0; i < n; i++) {
+      const k = (i + 0.5) / n;
+      const sx = corner[0] + inward[0] * reach * k + r.range(-40, 40);
+      const sy = corner[1] + inward[1] * reach * k + r.range(-60, 60);
+      const d = depth * r.range(0.85, 1.25);
+      const A = toWorld(sx, sy, d);
+      const sway = 0.12 * (g0 - 1) * Math.sin(time * r.range(2.2, 3.4) + i) + 0.05 * fbm(time * 0.9, i * 3.1, 7);
+      const yaw = Math.atan2(inward[1] * 0.2, inward[0]) + r.range(-1.0, 1.0) + (side === 'right' ? Math.PI : 0) + sway * 0.6;
+      const lo = {
+        anchor: A, yaw, pitch: r.range(0.1, 0.7) + sway, roll: r.range(-0.6, 0.6) + sway * 0.8,
+        length: (o2.size ?? 0.07) * r.range(0.75, 1.2), width: 0.36, curve: r.range(0.3, 0.9),
+        color: o2.color ?? '#2f6a22', color2: o2.color2 ?? '#7d9a32', seed: i + 1, gloss: 0.5, keep: !first,
+      };
+      const g = leafGeometry(lo, lo.pitch, lo.roll);
+      try { glc = renderLeafGL(g, P, cam, sun, sky, scale, lo); first = false; } catch { break; }
+    }
+    if (glc) {
+      const bl = (o2.blur ?? 0) + cam.blurAt(depth);
+      blurDraw(ctx, scale, pw, ph, bl, (c) => c.drawImage(glc, 0, 0, W, H), 'fg');
+    }
   }
 
   function drawHero(ctx, h, info, Wt) {
@@ -656,4 +822,125 @@ function drawSplash(ctx, spl, t, P, cam, snap, scale, light, Wt) {
     }
   }
   ctx.restore();
+}
+
+// --------------------------------------------------------------- rocks ---
+function drawRock(ctx, P, rk, sun, mirror, t) {
+  const r = rng(rk.seed ?? Math.round(rk.x * 1000 + rk.z * 77));
+  const h = rk.h ?? rk.r * 0.6;
+  const N = 28;
+  const pts = [];
+  const ph = r.range(0, 6.28);
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI;
+    const bump = 1 + 0.12 * Math.sin(a * 3 + ph) + 0.07 * Math.sin(a * 7 + ph * 2);
+    const x = rk.x + Math.cos(a) * rk.r * bump * 1.05;
+    const y = Math.sin(a) * h * bump * (0.85 + 0.15 * Math.cos(a * 2 + ph));
+    pts.push(P(x, y, rk.z));
+  }
+  if (pts.some((p) => !(p[2] > 0.02))) return;
+  ctx.save();
+  ctx.beginPath();
+  pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+  ctx.closePath();
+  const top = P(rk.x, h, rk.z), base = P(rk.x, 0, rk.z), side = P(rk.x + rk.r, 0, rk.z);
+  const rad = Math.abs(side[0] - base[0]);
+  if (mirror) {
+    ctx.fillStyle = rgba(rk.color ?? '#3a3a32', 0.95);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  ctx.clip();
+  const lx = sun.screenDir.x, ly = sun.screenDir.y;
+  const g = ctx.createRadialGradient(top[0] + lx * rad * 0.5, top[1] + ly * rad * 0.3, rad * 0.1, base[0], (top[1] + base[1]) / 2, rad * 1.3);
+  const c = rk.color ?? '#6b6658';
+  g.addColorStop(0, rgba(mix(c, '#f2ead8', 0.35)));
+  g.addColorStop(0.45, rgba(c));
+  g.addColorStop(1, rgba(mix(c, '#000000', 0.65)));
+  ctx.fillStyle = g;
+  ctx.fillRect(base[0] - rad * 1.6, top[1] - rad, rad * 3.2, (base[1] - top[1]) + rad * 2);
+  // mineral speckle & lichen
+  for (let i = 0; i < 70; i++) {
+    const px = base[0] + r.range(-1, 1) * rad, py = base[1] - r() * (base[1] - top[1]);
+    ctx.fillStyle = r() < 0.5 ? rgba('#000000', r.range(0.05, 0.16)) : rgba(r() < 0.3 ? '#9aa86a' : '#ffffff', r.range(0.04, 0.12));
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(0.6, rad * r.range(0.02, 0.08)), 0, 6.283);
+    ctx.fill();
+  }
+  // moss cap
+  if (rk.moss !== false) {
+    const mg = ctx.createLinearGradient(0, top[1], 0, top[1] + (base[1] - top[1]) * 0.45);
+    mg.addColorStop(0, rgba(rk.mossColor ?? '#5f7a2c', 0.75));
+    mg.addColorStop(1, rgba(rk.mossColor ?? '#5f7a2c', 0));
+    ctx.fillStyle = mg;
+    ctx.fillRect(base[0] - rad * 1.6, top[1] - 4, rad * 3.2, (base[1] - top[1]) * 0.5);
+  }
+  // wet, dark band at the waterline with a glossy edge
+  const wg = ctx.createLinearGradient(0, base[1] - (base[1] - top[1]) * 0.35, 0, base[1]);
+  wg.addColorStop(0, 'rgba(10,14,10,0)');
+  wg.addColorStop(1, 'rgba(10,14,10,0.6)');
+  ctx.fillStyle = wg;
+  ctx.fillRect(base[0] - rad * 1.6, top[1], rad * 3.2, base[1] - top[1] + 2);
+  const sg = ctx.createRadialGradient(top[0] + lx * rad * 0.45, top[1] + (base[1] - top[1]) * 0.25, 0, top[0] + lx * rad * 0.45, top[1] + (base[1] - top[1]) * 0.25, rad * 0.5);
+  sg.addColorStop(0, 'rgba(255,255,255,0.28)');
+  sg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(base[0] - rad * 1.6, top[1] - rad, rad * 3.2, (base[1] - top[1]) + rad * 2);
+  ctx.restore();
+  void t;
+}
+
+// ------------------------------------------------------------ swallows ---
+function drawSwallows(ctx, P, o, t, cam, mirror) {
+  const n = o.count ?? 3;
+  const r = rng(o.seed ?? 12);
+  const from = o.from ?? [-30, 12, 40], to = o.to ?? [30, 16, 40];
+  const start = o.start ?? 0, dur = o.dur ?? 4;
+  const size = o.size ?? 0.18; // wingspan/2 in metres
+  for (let i = 0; i < n; i++) {
+    const delay = r.range(0, o.stagger ?? 0.8);
+    const off = [r.range(-1, 1) * (o.spread ?? 3), r.range(-1, 1) * (o.spread ?? 3) * 0.4, r.range(-1, 1) * (o.spread ?? 3)];
+    const k = (t - start - delay) / dur;
+    if (k < -0.05 || k > 1.05) continue;
+    const ph = r.range(0, 6.28);
+    const wob = Math.sin(k * 9 + ph) * 0.6;
+    const pos = [0, 1, 2].map((j) => from[j] + (to[j] - from[j]) * k + off[j] + (j === 1 ? wob + Math.sin(k * 3.1 + ph) * 1.2 : 0));
+    const p = P(...pos);
+    if (!(p[2] > 0.5)) continue;
+    const s = cam.scaleAt(p[2]) * size;
+    if (s < 0.8) continue;
+    // swallows: quick wingbeats with glides
+    const glide = Math.sin(t * 1.7 + ph) > 0.35;
+    const flap = glide ? 0.15 : Math.sin(t * 17 + ph);
+    const ahead = P(...pos.map((v, j) => v + (to[j] - from[j]) * 0.01));
+    const dir = Math.atan2(ahead[1] - p[1], ahead[0] - p[0]);
+    ctx.save();
+    ctx.translate(p[0], p[1]);
+    ctx.rotate(dir + (mirror ? 0 : 0));
+    ctx.fillStyle = mirror ? 'rgba(8,10,20,0.6)' : (o.color ?? '#141a2a');
+    const wy = flap * 0.55;
+    ctx.beginPath();
+    // body
+    ctx.ellipse(0, 0, s * 0.42, s * 0.11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // forked tail
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.3, 0);
+    ctx.lineTo(-s * 0.95, -s * 0.16);
+    ctx.lineTo(-s * 0.55, 0);
+    ctx.lineTo(-s * 0.95, s * 0.16);
+    ctx.closePath();
+    ctx.fill();
+    // swept wings (scythe shape), foreshortened by the flap
+    for (const sd of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * 0.12, 0);
+      ctx.quadraticCurveTo(s * 0.05, sd * s * (0.45 - wy * sd * 0.3), -s * 0.45, sd * s * (1.0 - wy * sd * 0.9));
+      ctx.quadraticCurveTo(-s * 0.05, sd * s * 0.3, -s * 0.12, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 }
