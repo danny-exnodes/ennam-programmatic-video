@@ -16,6 +16,10 @@ npx playwright install chromium        # nếu máy chưa có Chromium (hoặc �
 cp .env.example .env                   # điền ANTHROPIC_API_KEY để bật Đạo diễn AI
 npm start                              # http://localhost:5173
 npm run seed                           # (tuỳ chọn) tạo dự án demo "Lumi C+"
+npm run seed:nature                    # (tuỳ chọn) demo vật lý thiên nhiên: gió, lá rơi, nước chảy, giọt sương
+npm run seed:tvc                       # (tuỳ chọn) TVC 30s Én Nam (xem docs/TVC_EN_NAM.md)
+npm run library -- --provider pexels --query "forest stream" --type video   # tải chất liệu có giấy phép (library/sources.json)
+pip install -r scripts/requirements.txt   # (tuỳ chọn) cho scripts/photo/prep.py và scripts/audio/*
 ```
 
 Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
@@ -33,6 +37,8 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 | `CHROME_PATH` | Đường dẫn Chromium nếu không dùng bản của Playwright |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | Giọng đọc AI (tiếng Việt tốt) — tuỳ chọn |
 | `OPENAI_API_KEY` | TTS thay thế qua `/audio/speech` — tuỳ chọn |
+| `PEXELS_API_KEY` | Tải chất liệu có giấy phép từ Pexels qua `npm run library` — tuỳ chọn |
+| `PIXABAY_API_KEY` | Tải chất liệu có giấy phép từ Pixabay qua `npm run library` — tuỳ chọn |
 
 ## Giao diện
 

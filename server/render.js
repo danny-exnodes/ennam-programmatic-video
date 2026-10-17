@@ -75,6 +75,7 @@ export async function openRenderPage(projectId, { override, scale = 1 } = {}) {
  */
 export async function renderProject(project, opts = {}) {
   const q = { draft: { mb: 1, crf: 23, preset: 'veryfast', scale: 0.5 }, standard: { mb: 3, crf: 18, preset: 'medium', scale: 1 }, high: { mb: 6, crf: 15, preset: 'slow', scale: 1 } }[opts.quality || 'standard'];
+  if (opts.motionBlur) q.mb = opts.motionBlur;
   const fps = project.fps || 30;
   const duration = project.shots.reduce((s, x) => s + x.duration, 0);
   const total = Math.max(1, Math.round(duration * fps));
