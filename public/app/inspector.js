@@ -31,6 +31,9 @@ export function renderInspector() {
     sh.transition = { type: trans.value, duration: Math.max(0.1, Number(tdur.value) || 0.5) };
   });
 
+  const fieldsBox = h('div');
+  renderFields(fieldsBox, p, sh);
+
   const ask = h('textarea', { placeholder: 'VD: shot này kịch tính hơn, camera đẩy chậm hơn, sản phẩm to hơn' });
   const askBtn = h('button', {
     disabled: !state.config.director,
@@ -68,6 +71,7 @@ export function renderInspector() {
     codeTimer = setTimeout(() => {
       if (lintShotCode(code.value)) return showErr();
       update(() => { sh.code = code.value; }, { structural: false });
+      renderFields(fieldsBox, p, sh); // declarations come from code
       setTimeout(showErr, 80);
     }, 450);
   });
@@ -91,6 +95,7 @@ export function renderInspector() {
       h('button', { class: 'primary shrink', onclick: apply }, 'Áp dụng'),
       h('div', { class: 'row' }, h('span', { class: 'small muted shrink' }, 'dài'), tdur)),
     sh.notes ? h('div', { class: 'notes' }, '🎬 ', sh.notes) : null,
+    fieldsBox,
     h('label', {}, 'Nội dung chuyển động trong shot là code — nhờ đạo diễn:'),
     ask,
     h('div', { class: 'row', style: { marginTop: '8px' } }, h('div', { class: 'shrink' }, askBtn)),
@@ -104,6 +109,85 @@ export function renderInspector() {
       h('button', { onclick: () => delShot(idx) }, '🗑')),
     assetsGrid(p),
   ].filter(Boolean));
+}
+
+// ---------------- "Nội dung": form generated from s.field() declarations ----------------
+const HEX6 = /^#[0-9a-f]{6}$/i;
+const HEX3 = /^#[0-9a-f]{3}$/i;
+const toHex6 = (v) => (HEX6.test(v) ? v : HEX3.test(v) ? '#' + [...v.slice(1)].map((c) => c + c).join('') : null);
+
+/**
+ * Editable values of a shot (engine.fieldsOf). Editing writes shot.fields[key] in client
+ * state and redraws the preview locally (no server call); the normal debounced autosave
+ * persists it. "Về mặc định" deletes the key so the code default applies again.
+ */
+function renderFields(box, p, sh) {
+  const decls = engine.fieldsOf(sh.id);
+  if (!decls.length) return box.replaceChildren();
+  const set = (key, v) => update(() => {
+    sh.fields = sh.fields || {};
+    if (v === undefined) delete sh.fields[key];
+    else sh.fields[key] = v;
+  }, { structural: false });
+  const media = p.assets.filter((a) => a.type === 'image' || a.type === 'video');
+
+  const rows = decls.map((d) => {
+    const has = () => Object.prototype.hasOwnProperty.call(sh.fields || {}, d.key);
+    const cur = has() ? sh.fields[d.key] : d.default;
+    const reset = h('button', {
+      class: 'ghost shrink small', title: 'Bỏ giá trị đã sửa, dùng lại giá trị trong code', disabled: !has(),
+      style: { padding: '2px 8px' },
+      onclick: () => { set(d.key, undefined); renderFields(box, p, sh); },
+    }, 'Về mặc định');
+    const changed = (v) => { set(d.key, v); reset.disabled = false; };
+    let ctl;
+    if (d.type === 'color') {
+      const hex = h('input', { value: String(cur ?? ''), placeholder: String(d.default ?? ''), spellcheck: false });
+      const pick = h('input', { type: 'color', class: 'shrink', value: toHex6(String(cur)) || '#000000', style: { width: '44px', padding: '2px', height: '36px' } });
+      pick.addEventListener('input', () => { hex.value = pick.value; changed(pick.value); });
+      hex.addEventListener('input', () => {
+        const v = hex.value.trim();
+        if (!v) return;
+        if (toHex6(v)) pick.value = toHex6(v);
+        changed(v);
+      });
+      ctl = h('div', { class: 'row' }, pick, hex);
+    } else if (d.type === 'number') {
+      ctl = h('input', { type: 'number', step: 'any', value: cur ?? '', placeholder: String(d.default ?? '') });
+      ctl.addEventListener('input', () => {
+        const n = ctl.value === '' ? NaN : Number(ctl.value);
+        if (Number.isFinite(n)) changed(n);
+      });
+    } else if (d.type === 'image') {
+      const names = media.map((a) => a.name);
+      const opts = media.map((a) => h('option', { value: a.name, selected: a.name === cur }, (a.type === 'video' ? '🎬 ' : '🖼 ') + a.name));
+      if (cur && !names.includes(String(cur))) opts.unshift(h('option', { value: String(cur), selected: true }, `${cur} (không có trong Chất liệu)`));
+      if (!cur) opts.unshift(h('option', { value: '', selected: true }, '— chọn chất liệu —'));
+      ctl = h('select', {}, opts);
+      ctl.addEventListener('change', () => ctl.value && changed(ctl.value));
+    } else {
+      const long = !(d.maxLength > 0 && d.maxLength <= 80) || String(cur ?? '').includes('\n');
+      ctl = h(long ? 'textarea' : 'input', {
+        value: String(cur ?? ''), placeholder: String(d.default ?? ''), spellcheck: false,
+        maxLength: d.maxLength > 0 ? d.maxLength : null,
+        style: long ? { minHeight: '56px' } : null,
+      });
+      ctl.addEventListener('input', () => changed(ctl.value));
+      ctl.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+    ctl.dataset.field = d.key;
+    return h('div', { class: 'field' },
+      h('div', { class: 'row', style: { margin: '12px 0 6px' } },
+        h('label', { style: { margin: 0 }, title: d.key }, d.label || d.key,
+          d.type === 'text' && d.maxLength > 0 ? h('span', { class: 'small' }, `  · tối đa ${d.maxLength} ký tự`) : null),
+        reset),
+      ctl);
+  });
+  box.replaceChildren(
+    h('div', { class: 'section-title' }, 'Nội dung'),
+    h('div', { class: 'small muted' }, 'Sửa chữ, màu, ảnh của shot — xem trước cập nhật ngay, không tốn lượt AI.'),
+    ...rows,
+  );
 }
 
 function moveShot(i, d) {

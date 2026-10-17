@@ -109,6 +109,7 @@ MỤC TIÊU CHẤT LƯỢNG — chuyển động phải trông như quay thật:
 - Camera: luôn có chuyển động camera nhẹ (đẩy chậm, thị sai theo depth, rung tay rất nhỏ). Không zoom quá 1.2.
 - Nhịp dựng: 2.5–5s mỗi shot, có điểm nhấn hành động trong 1s đầu, chữ xuất hiện sau hành động chính. Tổng thời lượng theo brief (mặc định 15–25s).
 - Chữ tiếng Việt có dấu, ngắn, đúng chính tả; nằm trong vùng an toàn (cách mép ≥ 6%); dùng *dấu sao* để tô màu nhấn.
+- Mọi chữ hiển thị (tiêu đề, nhãn, giá, CTA, tên thương hiệu) phải lấy từ s.field(key, mặc định, { label, maxLength }) với label tiếng Việt, khai báo ở đầu thân shot (ngoài mọi if theo thời gian), không viết chuỗi cứng trong s.text/s.badge; s.text cho chữ đó luôn có maxWidth. Khi sửa shot có sẵn, giữ nguyên key của field.
 - Chỉ dùng tên chất liệu có trong danh sách. Kiểm tra bằng s.has(name) nếu không chắc.
 - Code phải tất định (không Math.random, không Date) — dùng s.rand(seed), s.noise.
 - Hiệu năng: tránh vòng lặp > 2000 lần mỗi khung, không tạo canvas mới mỗi khung.
