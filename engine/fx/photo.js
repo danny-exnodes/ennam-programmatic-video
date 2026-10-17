@@ -10,7 +10,8 @@ import { renderPhoto, depthSampler } from './photogl.js';
 import { makeWind, gustAt } from './wind.js';
 import { compositeBottle } from './bottle.js';
 import { drawLensDrop, pendantShape } from './dew.js';
-import { makeCanvas } from './glkit.js';
+import { makeCanvas, compositeBlurred } from './glkit.js';
+import { renderCutouts } from './cutoutgl.js';
 
 const scratch = new Map();
 function canvasFor(key, w, h) {
@@ -89,6 +90,29 @@ export function photoScene(s, eng, o = {}) {
       }
       ctx.restore();
       return [x + ox, y + oy];
+    },
+    /**
+     * Real cut-out tree/plant (transparent PNG) standing at photo point (u, v), bending in the wind.
+     * depth: inverse depth like the depth map (0 far … 1 nearest photo pixel, >1 = in front of the photo);
+     * height in output px at zoom 1. Gets parallax, depth-of-field blur and haze from the shot.
+     * { image, u, v, depth, height, sway, stiffness, flutter, exposure, saturation, tint, haze, flip, seed, crop }
+     */
+    tree(c) {
+      const img = get(c.image);
+      if (!img) { eng.warn(s.shot.id, `Không tìm thấy chất liệu "${c.image}"`); return null; }
+      const D = c.depth ?? r.depthAt(c.u, c.v);
+      const [x, y, k] = r.toScreen(c.u, c.v, D);
+      const Hh = (c.height ?? 400) * k;
+      const project = (wx, wy) => [wx, -wy, 1];
+      const FOG = 1e6; // haze set by distance along z only (card width is in px)
+      const cam = { R: [1, 0, 0], pos: [x, 0, 1 + Math.log(1 - Math.min(0.95, c.haze ?? 0)) * FOG] };
+      const card = { ...c, img, x, z: 1, y: -y, height: Hh, sway: c.sway ?? 1, stiffness: c.stiffness ?? 1, flutter: c.flutter ?? 1, rim: c.rim ?? 0, choke: c.choke ?? 0.35, seed: c.seed ?? 3 };
+      const sky = { horizon: c.hazeColor ?? o.fog?.color ?? '#dfe5e3' };
+      const glc = renderCutouts([card], project, cam, sun, sky, wind, time, pw, ph, scale, false, FOG);
+      const dd = dof || {};
+      const blur = Math.min(dd.max ?? 28, (dd.aperture ?? 0) * Math.abs(D - (dd.focus ?? 0.5))) + (c.blur ?? 0);
+      compositeBlurred(ctx, glc, pw, ph, blur * scale, 'tree');
+      return [x, y];
     },
     /** Product bottle standing on photo point (u, v); height in output px (scaled by the camera). */
     bottle(b) {

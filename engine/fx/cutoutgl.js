@@ -21,7 +21,7 @@ in vec2 vUV; in float vDist;
 out vec4 outColor;
 uniform sampler2D uTex;
 uniform vec4 uCrop;            // u0, v0, u1, v1 of the subject inside the image
-uniform float uTime, uFlutter, uExposure, uSat, uFog, uSeed, uMirror, uRim;
+uniform float uTime, uFlutter, uExposure, uSat, uFog, uSeed, uMirror, uRim, uChoke;
 uniform vec3 uTint, uHaze, uSunCol;
 ${GLSL_NOISE}
 void main() {
@@ -33,6 +33,9 @@ void main() {
   vec4 c = texture(uTex, tuv);
   if (c.a < 0.01) discard;
   vec3 rgb = c.rgb / max(c.a, 1e-4);
+  // matte choke: eat into the semi-transparent fringe (removes the old background's halo)
+  c.a = clamp((c.a - uChoke) / (1.0 - uChoke), 0.0, 1.0);
+  if (c.a < 0.01) discard;
   vec3 lin = toLin(rgb);
   float l = dot(lin, vec3(0.2126, 0.7152, 0.0722));
   lin = mix(vec3(l), lin, uSat) * toLin(uTint) * uExposure;
@@ -151,6 +154,7 @@ export function renderCutouts(cards, project, cam, sun, sky, wind, time, outW, o
     gl.uniform1f(U.uSat, c.saturation ?? 1);
     gl.uniform1f(U.uSeed, c.seed ?? 1);
     gl.uniform1f(U.uRim, c.rim ?? 0.15);
+    gl.uniform1f(U.uChoke, c.choke ?? 0);
     gl.uniform3fv(U.uTint, hex3(c.tint ?? '#ffffff'));
     gl.drawElements(gl.TRIANGLES, S.nIdx, gl.UNSIGNED_SHORT, 0);
   }

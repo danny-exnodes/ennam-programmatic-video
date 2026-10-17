@@ -24,3 +24,7 @@ python3 $P a_waterfall_over_rocks.jpg --name waterfall --out assets --spec $S/wa
 python3 $P a_forest_of_trees_with_fog.jpg --name fogforest --out assets --spec $S/fogforest.json
 node scripts/seed-tvc-real.js /tmp/real/assets [mix.wav]
 ```
+
+## Cây cắt nền (tree-oak, tree-ash, tree-birch, tree-pine)
+Ảnh PNG cây tách nền do Danny cung cấp (Project files `IMG_0794`–`IMG_0797`, nguồn kiểu meye.dk). Lưu ý: điều khoản meye.dk không cho dùng cho quảng cáo — chỉ dùng cho bản demo nội bộ; khi lên sóng cần thay bằng ảnh có giấy phép thương mại.
+Tải lên dự án với tên `tree-oak` (0794), `tree-ash` (0795), `tree-birch` (0796), `tree-pine` (0797).

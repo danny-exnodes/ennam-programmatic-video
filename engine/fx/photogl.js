@@ -318,9 +318,9 @@ export function renderPhoto(maps, o, outW, outH, scale) {
   const dS = maps.depth ? depthSampler(maps.depth) : () => 0;
   // forward camera map: photo uv → screen px (scale 1), mirrors warpInv
   const W1 = outW / scale, H1 = outH / scale;
-  const toScreen = (u, v) => {
+  const toScreen = (u, v, Dover) => {
     const px = (u - fit[0]) / fit[2], py = (v - fit[1]) / fit[3];
-    const D = dS(u, v) * par;
+    const D = (Dover ?? dS(u, v)) * par;
     const s = zoom * (1 + dolly * D);
     let qx = 0.5 + (px - 0.5) * s - truck[0] * D - pan[0];
     let qy = 0.5 + (py - 0.5) * s - truck[1] * D - pan[1];

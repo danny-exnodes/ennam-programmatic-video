@@ -147,6 +147,6 @@ Chuẩn bị chất liệu (một lần cho mỗi ảnh): `python3 scripts/photo
 | `bloom, bloomThreshold` | Loé sáng quanh vùng sáng |
 | `light: {x, y}`, `sunColor`, `sunIntensity` | Hướng & màu sáng cho vật thể đặt thêm |
 
-Đối tượng trả về: `ph.toScreen(u, v)` → `[x, y]` px (bám theo camera), `ph.depthAt(u, v)`, `ph.drop({u, v | x, y, r, mode:'ball'|'pendant'|'sessile', stretch, beta, sx, sy})` (giọt nước như thấu kính thật), `ph.bottle({u, v | x, y, height, frost, drops, brightness, saturate, contrast, blur, sky, tint, label})` (chai sản phẩm đứng trên điểm ảnh, khớp màu & độ nét với cảnh).
+Đối tượng trả về: `ph.toScreen(u, v)` → `[x, y]` px (bám theo camera), `ph.depthAt(u, v)`, `ph.drop({u, v | x, y, r, mode:'ball'|'pendant'|'sessile', stretch, beta, sx, sy})` (giọt nước như thấu kính thật), `ph.tree({image, u, v, depth, height, sway, stiffness, flutter, exposure, saturation, tint, haze, hazeColor, choke, blur, flip, seed})` (cây/ bụi ảnh thật cắt nền PNG đứng tại điểm ảnh, uốn theo gió, có thị sai theo `depth` — >1 là đứng trước ảnh —, mờ theo DOF, `haze` 0..0.3 hoà vào sương, `choke` ăn viền nền cũ), `ph.bottle({u, v | x, y, height, frost, drops, brightness, saturate, contrast, blur, sky, tint, label})` (chai sản phẩm đứng trên điểm ảnh, khớp màu & độ nét với cảnh).
 
 Ví dụ hoàn chỉnh: `examples/tvc-en-nam-real/` (TVC 30 giây dựng từ ảnh thật).

@@ -13,6 +13,13 @@ const sc = s.nature({
 // real forest photo as the far bank (reflected in the water)
 const cx = P0[0] + 0.12 + Math.sin(-0.3) * 18, cz = P0[2] - 0.42 + Math.cos(-0.3) * 18;
 sc.plate({ image: 'river', x: cx, z: cz, y: -0.6, height: 22, width: 48, crop: [0, 0, 1, 0.68], exposure: 1.5, saturation: 1.1 });
+// real tree cut-outs (meye-style PNG) on the far bank: bend in the same wind, reflected in the water
+{
+  const cx0 = P0[0] + 0.12, cz0 = P0[2] - 0.42, fx = Math.sin(-0.3), fz = Math.cos(-0.3), rx = fz, rz = -fx;
+  const at = (d, l) => [cx0 + fx * d + rx * l, cz0 + fz * d + rz * l];
+  [[16.5, -6.2, 'tree4', 6.5, false], [15.5, -2.6, 'tree1', 5.4, false], [17, 0.6, 'tree2', 4.8, true], [16, 3.6, 'tree1', 5.8, true], [17, 7.2, 'tree2', 5.2, false]]
+    .forEach(([dd, l, img, h, flip], i) => { const [x, z] = at(dd, l); sc.cutout({ image: img, x, z, y: -0.15, height: h, flip, sway: 1, stiffness: 1.4, flutter: 1, exposure: 0.9, saturation: 1.1, tint: '#e8f0e0', seed: i + 1 }); });
+}
 sc.water({ flow: [0.12, 0], depth: 0.55, farZ: 17.6, foam: 0.3, simArea: [P0[0] - 0.6 - 0.12 * T0, P0[2] - 0.5, P0[0] + 0.6 - 0.12 * T0, P0[2] + 0.7] });
 sc.leaves({ count: 14, start: -5, end: 6, colors: 'mixed', z: [0.7, 3], size: [0.04, 0.07], seed: 11 });
 sc.leaf(LEAF);
