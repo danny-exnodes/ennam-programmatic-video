@@ -1,8 +1,10 @@
 // Đo token của đạo diễn AI có/không prompt caching trên dự án demo "Lumi C+".
-// usage: node --env-file=.env scripts/director-bench.js [--n 3] [--no-cache | --cache-only] [--project <id>]
+// usage: node --env-file=.env scripts/director-bench.js [--n 3] [--no-cache | --cache-only | --review] [--project <id>]
 //   mặc định: mỗi brief chạy 2 lần — không cache (đối chứng) rồi có cache — và in % thay đổi.
 //   --no-cache   chỉ chạy bản không cache (tắt breakpoint)
 //   --cache-only chỉ chạy bản có cache
+//   --review     (#5b) so output token của các VÒNG DUYỆT (lượt ≥ 2): kiểu cũ ép nộp lại cả bản
+//                dựng (reviewTools=false) vs approve_cut/patch_shots; cả hai đều bật cache.
 // Cần ANTHROPIC_API_KEY (tốn phí API thật) và server đang chạy (`npm start`) vì
 // bước render thử tải engine qua HTTP. Không lưu gì vào dự án.
 import { spawnSync } from 'node:child_process';
@@ -25,6 +27,7 @@ const BRIEFS = [
   'Đổi tông màu sang sáng sạch (clean), chữ to hơn cho bản xem trên điện thoại, giữ nguyên thông điệp.',
 ];
 const n = Math.max(1, Math.min(BRIEFS.length, Number(opt('--n', BRIEFS.length)) || BRIEFS.length));
+const REVIEW = flag('--review');
 const modes = flag('--no-cache') ? [false] : flag('--cache-only') ? [true] : [false, true];
 
 async function findDemo() {
@@ -48,6 +51,37 @@ const fmtN = (x) => Math.round(x).toLocaleString('en-US');
 const pct = (a, b) => (a ? `${(((b - a) / a) * 100).toFixed(1)}%` : '—');
 
 const project = await findDemo();
+
+if (REVIEW) {
+  // Output token vòng duyệt = tổng output các lượt sau lượt dựng đầu tiên.
+  const runs = [];
+  for (let i = 0; i < n; i++) {
+    for (const reviewTools of [false, true]) {
+      const label = `#${i + 1} ${reviewTools ? 'approve/patch' : 'nộp lại cả bản'}`;
+      console.error(`▶ ${label}: ${BRIEFS[i]}`);
+      const t0 = Date.now();
+      const out = await runDirector(project, { brief: BRIEFS[i], cache: true, review: true, reviewTools, log: (l) => console.error('   ' + l) });
+      const u = out.lastDirector.usage;
+      const reviewOut = u.rounds.slice(1).reduce((a, r) => a + r.output_tokens, 0);
+      runs.push({ brief: i + 1, reviewTools, tools: out.lastDirector.tools || [], first: u.rounds[0]?.output_tokens || 0, reviewOut, reviewRounds: u.rounds.length - 1, total: u.total, secs: (Date.now() - t0) / 1000 });
+    }
+  }
+  const lines = ['| Brief | Chế độ | Tool từng lượt | Output lượt dựng | Output vòng duyệt | Số vòng duyệt | Output tổng | Thời gian |', '|---|---|---|---:|---:|---:|---:|---:|'];
+  for (const r of runs) lines.push(`| ${r.brief} | ${r.reviewTools ? 'approve/patch' : 'nộp lại cả bản'} | ${r.tools.join(' → ')} | ${fmtN(r.first)} | ${fmtN(r.reviewOut)} | ${r.reviewRounds} | ${fmtN(r.total.output_tokens)} | ${r.secs.toFixed(0)}s |`);
+  console.log('\n' + lines.join('\n'));
+  // So theo output trung bình MỖI vòng duyệt (số vòng có thể khác nhau giữa 2 chế độ).
+  const perRound = (rs) => { const k = rs.reduce((a, r) => a + r.reviewRounds, 0); return k ? rs.reduce((a, r) => a + r.reviewOut, 0) / k : 0; };
+  const cmp = ['', '| Brief | Output/vòng duyệt (cũ) | Output/vòng duyệt (approve/patch) | Thay đổi |', '|---|---:|---:|---:|'];
+  for (let i = 1; i <= n; i++) {
+    const a = perRound(runs.filter((r) => r.brief === i && !r.reviewTools)), b = perRound(runs.filter((r) => r.brief === i && r.reviewTools));
+    cmp.push(`| ${i} | ${fmtN(a)} | ${fmtN(b)} | ${pct(a, b)} |`);
+  }
+  const A = perRound(runs.filter((r) => !r.reviewTools)), B = perRound(runs.filter((r) => r.reviewTools));
+  cmp.push(`| **Tổng** | **${fmtN(A)}** | **${fmtN(B)}** | **${pct(A, B)}** |`);
+  console.log(cmp.join('\n'));
+  console.log('\nTiêu chí #5: output token vòng duyệt giảm ≥ 60% khi đạo diễn duyệt không sửa (approve_cut).');
+  process.exit(0);
+}
 console.error(`Dự án: ${project.name} (${project.id}) · ${n} brief · chế độ: ${modes.map((m) => (m ? 'cache' : 'không cache')).join(' + ')}`);
 
 const rows = [];
