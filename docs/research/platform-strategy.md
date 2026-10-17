@@ -1,6 +1,6 @@
 # Nghiên cứu: Claude Platform, Higgsfield & app mobile cho Ennam Motion Studio
 
-> Tài liệu tham khảo, **không phải spec đã duyệt**. Tổng hợp ngày 2026-10-14 → 2026-10-17, đối chiếu với `main` tại commit `609c78b`.
+> Tài liệu tham khảo, **không phải spec đã duyệt**. Tổng hợp ngày 2026-10-14 → 2026-10-17, đối chiếu với `main` tại commit `052166a` (sau PR #2).
 > Giá, credit và trạng thái beta thay đổi nhanh — kiểm tra lại link nguồn trước khi ra quyết định chi phí.
 
 ## 1. Tóm tắt cho team
@@ -39,7 +39,8 @@ Higgsfield có MCP server với các tool phù hợp: `models_explore`, `get_pre
 Hướng đề xuất khớp kiến trúc hiện có:
 
 1. Thêm loại chất liệu **plate** trong `store.js`: video sinh từ ảnh/prompt, lưu vào `assets/` như chất liệu thường.
-2. Shot code dùng `s.video()` làm nền; lớp code vẫn vẽ chữ, logo, packshot → giữ tính tất định của phần thương hiệu.
+2. Shot code dùng `s.video()` hoặc `sc.plate()` (đã có từ PR #2) làm nền; lớp code vẫn vẽ chữ, logo, packshot → giữ tính tất định của phần thương hiệu.
+   - PR #2 đã thêm `s.photo()` (ảnh thật + depth/mask/flow qua `scripts/photo/prep.py`). Higgsfield có thể đóng vai **nguồn ảnh gốc** cho pipeline này (sinh still → prep → `s.photo`), rẻ hơn nhiều so với sinh video, và vẫn chuyển động tất định trong engine. Nên thử hướng này trước khi sinh video.
 3. Một module server (vd. `server/plates.js`) là **điểm duy nhất** gọi Higgsfield, có chốt chặn:
    - kiểm `balance` trước mỗi lô, dừng nếu dưới ngưỡng;
    - sinh keyframe (ảnh) trước, duyệt rồi mới sinh video;
