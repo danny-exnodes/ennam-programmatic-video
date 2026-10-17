@@ -92,25 +92,63 @@ export function selectShot(id, { seekTo = true } = {}) {
   emit('select', id);
 }
 
-/** Poll a server job until done; emits 'job' updates. */
-export async function trackJob(job, onDone) {
-  state.jobs = [...state.jobs.filter((j) => j.id !== job.id), job];
+export const JOB_TERMINAL = new Set(['done', 'error', 'cancelled', 'interrupted']);
+
+function putJob(job) {
+  state.jobs = state.jobs.some((j) => j.id === job.id) ? state.jobs.map((j) => (j.id === job.id ? job : j)) : [...state.jobs, job];
   emit('jobs');
-  for (;;) {
-    await new Promise((r) => setTimeout(r, job.kind === 'render' ? 1000 : 1500));
-    try {
-      job = await api.job(job.id);
-    } catch {
-      continue;
+}
+
+/** Follow a job via SSE (/api/jobs/:id/events); falls back to polling if SSE fails. */
+function followSSE(job) {
+  return new Promise((resolve) => {
+    if (typeof EventSource === 'undefined') return resolve(null);
+    let last = job, finished = false;
+    const es = new EventSource(api.jobEventsUrl(job.id));
+    es.addEventListener('job', (e) => {
+      try { last = JSON.parse(e.data); } catch { return; }
+      putJob(last);
+      if (JOB_TERMINAL.has(last.status)) { finished = true; es.close(); resolve(last); }
+    });
+    es.onerror = () => {
+      if (finished) return;
+      es.close();
+      resolve(null); // → polling fallback
+    };
+  });
+}
+
+/** Track a server job until it finishes (SSE, fallback poll); emits 'jobs' updates. */
+export async function trackJob(job, onDone) {
+  putJob(job);
+  if (!JOB_TERMINAL.has(job.status)) {
+    const viaSSE = await followSSE(job);
+    if (viaSSE) job = viaSSE;
+    else {
+      for (;;) {
+        await new Promise((r) => setTimeout(r, job.kind === 'render' ? 1000 : 1500));
+        try {
+          job = await api.job(job.id);
+        } catch {
+          continue;
+        }
+        putJob(job);
+        if (JOB_TERMINAL.has(job.status)) break;
+      }
     }
-    state.jobs = state.jobs.map((j) => (j.id === job.id ? job : j));
-    emit('jobs');
-    if (job.status === 'done' || job.status === 'error') break;
   }
   setTimeout(() => {
     state.jobs = state.jobs.filter((j) => j.id !== job.id);
     emit('jobs');
-  }, job.status === 'error' ? 15000 : 4000);
+  }, job.status === 'done' ? 4000 : 15000);
   onDone && onDone(job);
+  return job;
+}
+
+/** "Chạy lại" an interrupted/failed job: the server re-creates it from kind + params. */
+export async function retryJob(old) {
+  const job = await api.retry(old.id);
+  state.jobs = state.jobs.filter((j) => j.id !== old.id);
+  trackJob(job, (j) => emit('jobdone', j));
   return job;
 }

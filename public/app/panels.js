@@ -1,6 +1,6 @@
 // Left sidebar: tabs (Đạo diễn AI, Nhanh, Mẫu cảnh, Media, Lồng tiếng, Nhạc, Phong cách) + project list.
 import { h, fmt, toast, modal, slider } from './ui.js';
-import { state, on, emit, update, duration, shotStarts, trackJob, setProject, selectShot, saveNow } from './state.js';
+import { state, on, emit, update, duration, shotStarts, trackJob, retryJob, setProject, selectShot, saveNow } from './state.js';
 import { api, fileUrl, exportUrl } from './api.js';
 import { engine } from './player.js';
 import { MATERIALS, GRADES, ICON_NAMES } from '/engine/engine.js';
@@ -109,14 +109,19 @@ function jobsBox() {
   fillJobs(box);
   return box;
 }
+const JOB_STATUS = { error: '❌ lỗi', done: '✅ xong', cancelled: '⏹ đã huỷ', interrupted: '⚠️ gián đoạn', queued: '⏳ đang chờ' };
 function fillJobs(box) {
   box.replaceChildren(...state.jobs.map((j) => h('div', { class: 'job' },
     h('div', { class: 'row' },
       h('strong', {}, j.kind === 'render' ? '⬇ Xuất video' : '🎬 Đạo diễn'),
-      h('span', { class: 'small muted', style: { textAlign: 'right' } }, j.status === 'error' ? '❌ lỗi' : j.status === 'done' ? '✅ xong' : Math.round(j.progress * 100) + '%')),
+      h('span', { class: 'small muted', style: { textAlign: 'right' } }, JOB_STATUS[j.status] || Math.round(j.progress * 100) + '%')),
     h('div', { class: 'bar' }, h('div', { style: { width: Math.round(j.progress * 100) + '%' } })),
-    h('div', { class: 'log' }, j.status === 'error' ? j.error : j.message),
-    j.status === 'running' || j.status === 'queued' ? h('button', { class: 'ghost', style: { marginTop: '6px', padding: '3px 8px' }, onclick: () => api.cancel(j.id) }, 'Huỷ') : null)));
+    h('div', { class: 'log' }, j.status === 'interrupted' ? [j.error, ...(j.log || []).slice(-6)].join('\n') : j.error && j.status !== 'done' ? j.error : j.message),
+    j.status === 'running' || j.status === 'queued' ? h('button', { class: 'ghost', style: { marginTop: '6px', padding: '3px 8px' }, onclick: () => api.cancel(j.id) }, 'Huỷ') : null,
+    j.status === 'interrupted' ? h('button', {
+      class: 'primary', style: { marginTop: '6px', padding: '3px 8px' },
+      onclick: (e) => { e.target.disabled = true; retryJob(j).catch((err) => { e.target.disabled = false; toast(err.message, { error: true }); }); },
+    }, '↻ Chạy lại') : null)));
 }
 on('jobs', () => {
   const box = document.getElementById('jobsBox');

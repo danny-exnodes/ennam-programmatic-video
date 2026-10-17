@@ -31,6 +31,8 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 | `ANTHROPIC_API_KEY` | Bật Đạo diễn AI |
 | `DIRECTOR_MODEL` | Mặc định `claude-opus-5-5` |
 | `DIRECTOR_PROMPT_CACHE` | Prompt caching cho đạo diễn (mặc định bật); đặt `0` để tắt khi đo đối chứng |
+| `DIRECTOR_CONCURRENCY` | Số job đạo diễn chạy đồng thời (mặc định 2); job vượt giới hạn xếp hàng FIFO. Render luôn chạy từng job một |
+| `JOBS_TEST_KINDS` | Chỉ dùng cho `scripts/test-jobs.js` (`1` = bật kind job giả và `POST /api/test/jobs`); không bật trên server thật |
 | `APP_PASSWORD` | Bật đăng nhập Basic Auth cho cả team (user bất kỳ, mật khẩu này) |
 | `PORT` | Mặc định 5173 |
 | `DATA_DIR` | Nơi lưu dự án, chất liệu, video xuất (mặc định `./data`) |
@@ -52,6 +54,7 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 - **Phong cách** — grade màu, vignette, bloom, hạt phim, letterbox, bảng màu thương hiệu, khung hình (16:9, 9:16, 1:1, 4:5, 4K), fps.
 - **Cột phải** — thuộc tính shot, chuyển cảnh, *Nhờ đạo diễn* cho riêng shot, sửa code trực tiếp (xem trước cập nhật ngay).
 - **Timeline** — kéo mép phải shot đổi độ dài, kéo shot đổi thứ tự, kéo câu thoại để dời, bấm thước để tua.
+- **Job** (tab Đạo diễn AI) — tiến độ đạo diễn/xuất video cập nhật tức thì qua SSE (tự chuyển sang poll nếu SSE lỗi); huỷ được cả job đang chờ. Job lưu ở `DATA_DIR/jobs/`, nên khi server khởi động lại giữa chừng job hiện **⚠️ gián đoạn** kèm log cũ và nút **↻ Chạy lại**.
 - **Lịch sử** — mọi lần AI/mẫu thay đổi đều lưu phiên bản cũ, khôi phục 1 chạm.
 
 Phím tắt: `Space` phát/dừng · `←/→` từng khung (`Shift` = 1 giây) · `Home` về đầu · `Ctrl/⌘+S` lưu.
@@ -72,6 +75,7 @@ node scripts/sheet.js <projectId> out.jpg 3     # contact sheet render thật
 node scripts/frame.js <projectId> <shot> 0.5,1.2 out   # khung full-res của 1 shot
 node scripts/bench.js <projectId> 3              # đo thời gian render từng shot
 node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
+node scripts/test-jobs.js                        # test hàng đợi job: restart → interrupted, giới hạn song song, huỷ, render đọc project lúc chạy, SSE (tự bật server con)
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 ```
@@ -81,6 +85,18 @@ Mặc định mỗi brief chạy 2 lần (không cache rồi có cache) và in b
 (`input + 1.25 × cache write + 0.1 × cache read`). Tuỳ chọn: `--n 1..3` số brief, `--no-cache` chỉ chạy bản tắt breakpoint,
 `--cache-only` chỉ chạy bản có cache, `--project <id>` dùng dự án khác. Token của lần chạy gần nhất được lưu ở
 `project.lastDirector.usage` (`total` + `rounds`) và hiện ở tab Đạo diễn AI.
+
+### API job
+
+| Route | Ý nghĩa |
+|---|---|
+| `GET /api/jobs?project=<id>` · `GET /api/jobs/:id` | Trạng thái job: `queued` → `running` → `done` / `error` / `cancelled`, hoặc `interrupted` (server khởi động lại khi job đang chạy/chờ) |
+| `POST /api/jobs/:id/cancel` | Huỷ job đang chạy hoặc đang chờ (job chờ bị huỷ không bao giờ chạy) |
+| `POST /api/jobs/:id/retry` | "Chạy lại": tạo job mới cùng `kind` + `params` (trường `retryOf` trỏ về job cũ) |
+| `GET /api/jobs/:id/events` | SSE: `event: job` (JSON job đầy đủ) mỗi khi đổi trạng thái/tiến độ; tự đóng khi job kết thúc; heartbeat `: ping` mỗi 15 s |
+| `GET /api/projects/:id/jobs/events` | SSE theo dự án: `event: jobs` (danh sách ban đầu) rồi `event: job` cho mọi job của dự án |
+
+Job render đọc lại dự án **lúc bắt đầu chạy** (không phải lúc bấm xuất) và ghi `projectUpdatedAt` của bản đã dùng. Nếu đặt sau reverse proxy, tắt buffering cho `/api/*/events` (server đã gửi `X-Accel-Buffering: no`).
 
 ### Golden-frame (kiểm tra hình ảnh tự động)
 
