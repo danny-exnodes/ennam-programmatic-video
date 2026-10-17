@@ -26,32 +26,17 @@ function parseRuns(str) {
   return words;
 }
 
-/**
- * opts: x,y,size,font('sans'|'serif'|css),weight,color,accent,align('left'|'center'|'right'),
- * anim('rise'|'fade'|'blur'|'type'|'wipe'|'pop'|'none'), start, dur, stagger, out (s, fade out start),
- * shadow (bool|number), letterSpacing (em), maxWidth (wrap), lineHeight
- * Returns {width, height, x0, y0} of laid out block.
- */
-export function text(ctx, t, str, o = {}) {
-  const size = o.size ?? 72;
-  const weight = o.weight ?? 700;
+function fontOf(o, size) {
   const fam = FONTS[o.font ?? 'sans'] ?? o.font;
-  const color = o.color ?? '#ffffff';
-  const accent = o.accent ?? '#f5b54a';
-  const start = o.start ?? 0;
-  const dur = o.dur ?? 0.8;
-  const stagger = o.stagger ?? 0.06;
-  const anim = o.anim ?? 'rise';
-  const lh = (o.lineHeight ?? 1.18) * size;
-  ctx.save();
-  ctx.font = `${o.italic ? 'italic ' : ''}${weight} ${size}px ${fam}`;
-  ctx.textBaseline = 'alphabetic';
+  return `${o.italic ? 'italic ' : ''}${o.weight ?? 700} ${size}px ${fam}`;
+}
+
+/** Greedy word wrap at a given font size. Returns lines of measured words + widest line. */
+function layoutLines(ctx, words, o, size, maxW) {
+  ctx.font = fontOf(o, size);
   if ('letterSpacing' in ctx) ctx.letterSpacing = `${(o.letterSpacing ?? 0) * size}px`;
-  const words = parseRuns(String(str));
-  // layout with wrapping
   const lines = [[]];
   let lineW = 0;
-  const maxW = o.maxWidth ?? Infinity;
   for (const w of words) {
     if (w.text === '\n') { lines.push([]); lineW = 0; continue; }
     const ww = ctx.measureText(w.text).width;
@@ -63,6 +48,55 @@ export function text(ctx, t, str, o = {}) {
     lines[lines.length - 1].push({ ...w, w: ww });
     lineW += ww;
   }
+  let widest = 0;
+  for (const line of lines) {
+    // trailing spaces do not count toward the visible width
+    let lw = line.reduce((s, w) => s + w.w, 0);
+    for (let i = line.length - 1; i >= 0 && line[i].space; i--) lw -= line[i].w;
+    widest = Math.max(widest, lw);
+  }
+  return { lines, widest };
+}
+
+/**
+ * opts: x,y,size,font('sans'|'serif'|css),weight,color,accent,align('left'|'center'|'right'),
+ * anim('rise'|'fade'|'blur'|'type'|'wipe'|'pop'|'none'), start, dur, stagger, out (s, fade out start),
+ * shadow (bool|number), letterSpacing (em), lineHeight,
+ * maxWidth (wrap; text auto-shrinks if a line still overflows), maxLines (shrink until it fits in
+ * that many lines; 1 = single line, no wrap), minSize (floor for auto-shrink, default 6px).
+ * Returns {width, height, lines, words, size} of laid out block (size = font size actually used).
+ */
+export function text(ctx, t, str, o = {}) {
+  const color = o.color ?? '#ffffff';
+  const accent = o.accent ?? '#f5b54a';
+  const start = o.start ?? 0;
+  const dur = o.dur ?? 0.8;
+  const stagger = o.stagger ?? 0.06;
+  const anim = o.anim ?? 'rise';
+  ctx.save();
+  ctx.textBaseline = 'alphabetic';
+  const words = parseRuns(String(str));
+  const maxW = o.maxWidth ?? Infinity;
+  const maxLines = o.maxLines ?? Infinity;
+  // single-line mode: never wrap, only shrink
+  const wrapW = maxLines === 1 ? Infinity : maxW;
+  let size = o.size ?? 72;
+  let { lines, widest } = layoutLines(ctx, words, o, size, wrapW);
+  // Auto-shrink (deterministic: pure function of the string, options and font metrics).
+  // Text that already fits is laid out exactly as before.
+  const fits = (L) => L.widest <= maxW + 0.5 && L.lines.length <= maxLines;
+  if (Number.isFinite(maxW) && !fits({ lines, widest })) {
+    // Largest size in [minSize, size) that fits: fixed-step bisection, then snapped down to 0.5px.
+    const minSize = Math.max(1, o.minSize ?? 6);
+    let lo = minSize, hi = size;
+    for (let i = 0; i < 14 && hi - lo > 0.25; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(layoutLines(ctx, words, o, mid, wrapW))) lo = mid; else hi = mid;
+    }
+    size = Math.max(minSize, Math.floor(lo * 2) / 2);
+    ({ lines, widest } = layoutLines(ctx, words, o, size, wrapW));
+  }
+  const lh = (o.lineHeight ?? 1.18) * size;
   const align = o.align ?? 'left';
   let idx = 0;
   let blockW = 0;
@@ -108,7 +142,7 @@ export function text(ctx, t, str, o = {}) {
     }
   });
   ctx.restore();
-  return { width: blockW, height: lines.length * lh, lines: lines.length, words: idx };
+  return { width: blockW, height: lines.length * lh, lines: lines.length, words: idx, size };
 }
 
 /** Animated underline / accent bar that draws in. */

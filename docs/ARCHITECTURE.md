@@ -22,7 +22,7 @@ Trình duyệt (editor)                Server Node (Express)                 Chr
 
 | File | Vai trò |
 |---|---|
-| `engine.js` | Biên dịch shot, dựng API `s` mỗi khung, camera + thị sai theo depth, layer, chuyển cảnh, motion blur (tích luỹ nhiều mẫu trong 1 khung), đồng bộ video |
+| `engine.js` | Biên dịch shot, dựng API `s` mỗi khung, camera + thị sai theo depth, layer, chuyển cảnh, motion blur (tích luỹ nhiều mẫu trong 1 khung), đồng bộ video. Trường sửa được: `s.field` đọc `shot.fields`, ghi lại khai báo; `engine.fieldsOf(shotId)` trả danh sách field (tự chạy shot một lần ở t=0 nếu code mới đổi) cho Inspector |
 | `math.js` | easing, RNG có seed, nhiễu mượt, lò xo giải tích, rơi–nảy theo hệ số đàn hồi, con lắc |
 | `materials.js` | preset vật liệu + `drawDroplet` (truyền sáng, caustic, viền Fresnel, highlight, kéo giãn theo vận tốc) |
 | `fx/sim.js` | bộ mô phỏng hạt: trọng lực, lực cản, gió, nhiễu loạn, va sàn (nảy/hấp thụ/dính), sinh sự kiện va chạm |

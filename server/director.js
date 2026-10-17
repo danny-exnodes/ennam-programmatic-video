@@ -168,6 +168,8 @@ function applyCut(project, input) {
     transition: s.transition || { type: 'cut' },
     code: String(s.code || ''),
     notes: s.notes || '',
+    // keep the user's field values for shots the director kept (same id)
+    fields: (s.id && old.get(s.id)?.fields) || {},
   }));
   if (Array.isArray(input.voice)) {
     const oldVoice = new Map(p.voice.map((v) => [v.text.trim(), v]));
