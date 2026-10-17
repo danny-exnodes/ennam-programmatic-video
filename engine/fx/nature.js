@@ -202,9 +202,10 @@ export function natureScene(s, eng, o = {}) {
     },
   };
 
-  const PROF = typeof window !== 'undefined' && window.__profOn;
-  const tick = (k, t0) => { if (PROF) { const pr = (window.__prof ||= {}); pr[k] = (pr[k] || 0) + performance.now() - t0; } };
-  const now = () => (PROF ? performance.now() : 0);
+  // Profiling uses an injected clock (window.__profNow) so the engine never reads a real clock.
+  const PROF = typeof window !== 'undefined' && window.__profOn && typeof window.__profNow === 'function';
+  const now = () => (PROF ? window.__profNow() : 0);
+  const tick = (k, t0) => { if (PROF) { const pr = (window.__prof ||= {}); pr[k] = (pr[k] || 0) + now() - t0; } };
   function renderScene() {
     const ctx = s.ctx;
     ctx.save();
