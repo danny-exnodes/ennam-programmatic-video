@@ -195,6 +195,7 @@ export function buildFromTemplate(project, { template, scene, at, headline, feat
       duration: sc.duration,
       transition: { type: i === 0 ? 'cut' : 'dissolve', duration: 0.5 },
       code: sc.code({ bg, product: A.product, ingredient: A.ingredient, headline, features, material, cta, ...extra }).trim() + '\n',
+      fields: {},
     };
   };
   const p = structuredClone(project);

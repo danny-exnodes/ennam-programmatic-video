@@ -43,9 +43,24 @@ Mặc định: ảnh & fx `depth 1`; bokeh 0.3; chữ/badge/underline `depth 0`.
 - `s.world((ctx) => { ... }, depth)` — vẽ canvas 2D tự do (ctx) có áp camera.
 - `s.ctx` — CanvasRenderingContext2D thô (đã scale về toạ độ logic).
 
+## Trường sửa được — `s.field(key, mặc định, { type, label, maxLength })`
+Chữ/giá/CTA/màu/ảnh mà người dùng có thể muốn đổi **không viết cứng** trong code: khai báo bằng `s.field` để Inspector sinh form sửa (không cần code, không tốn lượt AI).
+Trả về `shot.fields[key]` nếu người dùng đã nhập, ngược lại trả `mặc định`. Không phụ thuộc `s.t`: khai báo ở đầu thân shot, ngoài mọi `if` theo thời gian.
+- `type`: `'text'` (mặc định) | `'color'` (chuỗi màu CSS) | `'number'` | `'image'` (tên chất liệu, dùng cho `s.image`). `label`: nhãn tiếng Việt trên form. `maxLength`: giới hạn ký tự (text).
+- `key` duy nhất trong một shot, dạng ngắn gọn: `headline`, `price`, `cta`, `brand_color`, `product`.
+```js
+const headline = s.field('headline', 'Sáng mịn, *tươi tắn*', { label: 'Tiêu đề', maxLength: 60 });
+const color = s.field('accent', s.palette.accent, { type: 'color', label: 'Màu nhấn' });
+const product = s.field('product', 'serum', { type: 'image', label: 'Ảnh sản phẩm' });
+s.image(product, { h: 640, x: 1300, y: 560 });
+s.text(headline, { x: 160, y: 520, size: 96, accent: color, maxWidth: 900, maxLines: 2 });
+```
+
 ## Chữ & biểu tượng
-- `s.text(str, { x, y, size=72, weight=700, font:'sans'|'serif', color, accent, align:'left'|'center'|'right', anim:'rise'|'fade'|'blur'|'pop'|'wipe'|'type'|'none', start, dur, stagger, out, outDur, maxWidth, lineHeight, letterSpacing, italic, shadow })`
+- `s.text(str, { x, y, size=72, weight=700, font:'sans'|'serif', color, accent, align:'left'|'center'|'right', anim:'rise'|'fade'|'blur'|'pop'|'wipe'|'type'|'none', start, dur, stagger, out, outDur, maxWidth, maxLines, minSize, lineHeight, letterSpacing, italic, shadow })`
   - `*từ nhấn*` hiển thị màu `accent`. `y` là đường chân chữ dòng đầu. Xuống dòng bằng `maxWidth`.
+  - Tự co chữ: nếu một dòng vẫn rộng hơn `maxWidth` (từ quá dài) hoặc số dòng vượt `maxLines`, cỡ chữ tự giảm (không nhỏ hơn `minSize` nếu có đặt) cho vừa. `maxLines: 1` = một dòng, không xuống dòng, chỉ co. Luôn đặt `maxWidth` cho chữ lấy từ `s.field`.
+  - Trả về `{ width, height, lines, size }` (`size` = cỡ chữ thực tế sau khi co).
   - `out`: thời điểm (s) chữ bắt đầu biến mất.
 - `s.underline({ x, y, width, thickness, color, color2, start, dur })`
 - `s.badge({ icon, label, x, y, size=120, start, dur, color, ring })` — vòng tròn + icon + nhãn, bật lò xo.

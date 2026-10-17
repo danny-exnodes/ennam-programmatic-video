@@ -30,6 +30,7 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 |---|---|
 | `ANTHROPIC_API_KEY` | Bật Đạo diễn AI |
 | `DIRECTOR_MODEL` | Mặc định `claude-opus-5-5` |
+| `DIRECTOR_PROMPT_CACHE` | Prompt caching cho đạo diễn (mặc định bật); đặt `0` để tắt khi đo đối chứng |
 | `APP_PASSWORD` | Bật đăng nhập Basic Auth cho cả team (user bất kỳ, mật khẩu này) |
 | `PORT` | Mặc định 5173 |
 | `DATA_DIR` | Nơi lưu dự án, chất liệu, video xuất (mặc định `./data`) |
@@ -71,7 +72,15 @@ node scripts/sheet.js <projectId> out.jpg 3     # contact sheet render thật
 node scripts/frame.js <projectId> <shot> 0.5,1.2 out   # khung full-res của 1 shot
 node scripts/bench.js <projectId> 3              # đo thời gian render từng shot
 node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
+node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
+node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 ```
+
+`director-bench.js` cần `ANTHROPIC_API_KEY` và server đang chạy; nếu chưa có dự án demo "Lumi C+ (demo)" nó tự chạy `scripts/seed-demo.js`.
+Mặc định mỗi brief chạy 2 lần (không cache rồi có cache) và in bảng markdown 4 trường token + % thay đổi chi phí input quy đổi
+(`input + 1.25 × cache write + 0.1 × cache read`). Tuỳ chọn: `--n 1..3` số brief, `--no-cache` chỉ chạy bản tắt breakpoint,
+`--cache-only` chỉ chạy bản có cache, `--project <id>` dùng dự án khác. Token của lần chạy gần nhất được lưu ở
+`project.lastDirector.usage` (`total` + `rounds`) và hiện ở tab Đạo diễn AI.
 
 ### Golden-frame (kiểm tra hình ảnh tự động)
 

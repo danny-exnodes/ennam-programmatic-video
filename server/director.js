@@ -15,6 +15,9 @@ import { SCENES } from './templates.js';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DIRECTOR_MODEL = process.env.DIRECTOR_MODEL || 'claude-opus-5-5';
 const MAX_TOKENS = Number(process.env.DIRECTOR_MAX_TOKENS || 32000);
+// Prompt caching (mặc định bật). DIRECTOR_PROMPT_CACHE=0 tắt breakpoint — dùng để đo đối chứng.
+const CACHE_DEFAULT = process.env.DIRECTOR_PROMPT_CACHE !== '0';
+const EPHEMERAL = Object.freeze({ type: 'ephemeral' });
 
 export function directorAvailable() {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -25,9 +28,14 @@ function anthropic() {
   if (!client) client = new Anthropic();
   return client;
 }
+/** Test hook: thay client Anthropic (ví dụ bằng stub) — truyền null để về mặc định. */
+export function setAnthropicClient(c) {
+  client = c;
+}
 
+const SHOT_API_PATH = path.join(ROOT, 'docs/SHOT_API.md');
 function shotApiDoc() {
-  return fs.readFileSync(path.join(ROOT, 'docs/SHOT_API.md'), 'utf8');
+  return fs.readFileSync(SHOT_API_PATH, 'utf8');
 }
 
 const SHOT_SCHEMA = {
@@ -78,7 +86,15 @@ const SHOT_TOOL = {
   input_schema: { type: 'object', properties: { summary: { type: 'string' }, shot: SHOT_SCHEMA }, required: ['summary', 'shot'] },
 };
 
-function systemPrompt() {
+// systemPrompt() chỉ phụ thuộc SHOT_API.md (+ SCENES cố định) → ghi nhớ theo mtime.
+let promptMemo = { mtime: -1, text: '' };
+export function systemPrompt() {
+  const mtime = fs.statSync(SHOT_API_PATH).mtimeMs;
+  if (promptMemo.mtime !== mtime) promptMemo = { mtime, text: buildSystemPrompt() };
+  return promptMemo.text;
+}
+
+function buildSystemPrompt() {
   const examples = ['splash', 'hero', 'features'].map((k) => {
     const sc = SCENES[k];
     return `### Ví dụ: ${sc.name}\n\`\`\`js\n${sc.code({ product: 'hero', bg: 'bg', ingredient: 'splash', features: [{ icon: 'drop', label: 'Thẩm thấu' }, { icon: 'sun', label: 'Sáng da' }] }).trim()}\n\`\`\``;
@@ -135,15 +151,58 @@ function projectForPrompt(p) {
   }, null, 1);
 }
 
-async function callTool(messages, tool, { signal, log }) {
-  const stream = anthropic().messages.stream({
+export const USAGE_FIELDS = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'];
+
+/** Lấy 4 trường token từ msg.usage (null → 0). */
+export function pickUsage(u = {}) {
+  const o = {};
+  for (const k of USAGE_FIELDS) o[k] = Number(u?.[k]) || 0;
+  return o;
+}
+
+/** Cộng dồn usage của một lượt gọi vào { total, rounds }. */
+export function addUsage(acc, u) {
+  const one = pickUsage(u);
+  for (const k of USAGE_FIELDS) acc.total[k] += one[k];
+  acc.rounds.push(one);
+  return one;
+}
+
+export function emptyUsage() {
+  return { total: pickUsage({}), rounds: [] };
+}
+
+export function usageLine(u) {
+  return `vào ${u.input_tokens} · ra ${u.output_tokens} · đọc cache ${u.cache_read_input_tokens} · ghi cache ${u.cache_creation_input_tokens}`;
+}
+
+/**
+ * Dựng body request. Thứ tự cache prefix của API: tools → system → messages.
+ * Breakpoint 1: khối system. Breakpoint 2: khối cuối của user turn mở đầu
+ * (chất liệu + JSON dự án + nhiệm vụ) — các vòng sau đọc lại prefix này từ cache.
+ * Không sửa `messages` gốc: bản sao nông của turn đầu mang cache_control.
+ */
+export function buildRequest(messages, tool, { cache = CACHE_DEFAULT } = {}) {
+  const system = [{ type: 'text', text: systemPrompt(), ...(cache ? { cache_control: EPHEMERAL } : {}) }];
+  let msgs = messages;
+  if (cache && messages.length && Array.isArray(messages[0].content) && messages[0].content.length) {
+    const first = messages[0];
+    const content = first.content.slice();
+    content[content.length - 1] = { ...content[content.length - 1], cache_control: EPHEMERAL };
+    msgs = [{ ...first, content }, ...messages.slice(1)];
+  }
+  return {
     model: DIRECTOR_MODEL,
     max_tokens: MAX_TOKENS,
-    system: systemPrompt(),
+    system,
     tools: [tool],
     tool_choice: { type: 'tool', name: tool.name },
-    messages,
-  }, { signal });
+    messages: msgs,
+  };
+}
+
+async function callTool(messages, tool, { signal, log, cache }) {
+  const stream = anthropic().messages.stream(buildRequest(messages, tool, { cache }), { signal });
   let chars = 0, lastTick = 0;
   stream.on('inputJson', (delta) => {
     chars += delta.length;
@@ -155,7 +214,7 @@ async function callTool(messages, tool, { signal, log }) {
   const msg = await stream.finalMessage();
   const use = msg.content.find((c) => c.type === 'tool_use');
   if (!use) throw new Error('Đạo diễn không trả về kết quả hợp lệ');
-  return { input: use.input, message: msg, toolUseId: use.id };
+  return { input: use.input, message: msg, toolUseId: use.id, usage: msg.usage };
 }
 
 function applyCut(project, input) {
@@ -168,6 +227,8 @@ function applyCut(project, input) {
     transition: s.transition || { type: 'cut' },
     code: String(s.code || ''),
     notes: s.notes || '',
+    // keep the user's field values for shots the director kept (same id)
+    fields: (s.id && old.get(s.id)?.fields) || {},
   }));
   if (Array.isArray(input.voice)) {
     const oldVoice = new Map(p.voice.map((v) => [v.text.trim(), v]));
@@ -222,7 +283,7 @@ function describeErrors(p, errs) {
  * Run the director. Returns the updated project (not yet saved).
  * shotId: limit the edit to one shot ("Nhờ đạo diễn" in the inspector).
  */
-export async function runDirector(project, { brief, shotId, review = true, log = () => {}, progress = () => {}, signal } = {}) {
+export async function runDirector(project, { brief, shotId, review = true, log = () => {}, progress = () => {}, signal, cache = CACHE_DEFAULT } = {}) {
   if (!directorAvailable()) throw new Error('Chưa cấu hình ANTHROPIC_API_KEY trên server. Dùng tab "Nhanh" hoặc "Mẫu cảnh" để dựng không cần AI.');
   progress(0.05, 'Đạo diễn đang xem chất liệu');
   const { blocks, list } = await assetBlocks(project);
@@ -243,8 +304,16 @@ export async function runDirector(project, { brief, shotId, review = true, log =
     ],
   }];
 
+  const usage = emptyUsage();
+  const call = async () => {
+    const res = await callTool(messages, tool, { signal, log, cache });
+    const one = addUsage(usage, res.usage);
+    log(`Token lượt ${usage.rounds.length}: ${usageLine(one)}`);
+    return res;
+  };
+
   progress(0.15, 'Đạo diễn đang viết kịch bản & code shot');
-  let r = await callTool(messages, tool, { signal, log });
+  let r = await call();
   let next = shotId ? applyShot(project, shotId, r.input) : applyCut(project, r.input);
   let summary = r.input.summary;
 
@@ -277,11 +346,12 @@ export async function runDirector(project, { brief, shotId, review = true, log =
       feedback.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: sheet } });
     }
     messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: r.toolUseId, content: 'Đã nhận. Kết quả kiểm tra bên dưới.' }, ...feedback] });
-    r = await callTool(messages, tool, { signal, log });
+    r = await call();
     next = shotId ? applyShot(project, shotId, r.input) : applyCut(project, r.input);
     summary = r.input.summary || summary;
   }
-  next.lastDirector = { at: new Date().toISOString(), brief, summary, model: DIRECTOR_MODEL };
+  log(`Token cả lần chạy (${usage.rounds.length} lượt): ${usageLine(usage.total)}`);
+  next.lastDirector = { at: new Date().toISOString(), brief, summary, model: DIRECTOR_MODEL, usage };
   if (!shotId && brief) next.brief = brief;
   progress(1, summary);
   return next;
