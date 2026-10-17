@@ -223,6 +223,7 @@ async function main() {
     const calibs = [];
     let nFrames = 0;
     const orderDep = [];
+    let worst = { key: '-', exact: 0, max: 0 };
 
     for (const fx of fixtures) {
       const frames = fx.project.golden?.frames || [{ t: 0.5 }];
@@ -258,6 +259,7 @@ async function main() {
         if (!fs.existsSync(expFile)) { bad(`${key}: thiếu ảnh golden ${path.relative(ROOT, expFile)} — chạy --update`); await fsp.writeFile(path.join(OUT, `${key}.actual.png`), A.pngs.get(key)); continue; }
         const e = await decode(await fsp.readFile(expFile));
         const c = await compare(a, e, { image: true });
+        if (c.exact > worst.exact) worst = { key, exact: c.exact, max: c.max };
         if (c.sizeMismatch) bad(`${key}: kích thước ${a.w}×${a.h} ≠ golden ${e.w}×${e.h}`);
         else if (c.ratio > MAX_RATIO) bad(`${key}: lệch golden ${(c.ratio * 100).toFixed(3)}% pixel (> ${(MAX_RATIO * 100).toFixed(2)}%, max Δ ${c.max}) → test/golden/out/${key}.diff.png`);
         else if (c.exact) info(`${key}: lệch nhỏ trong ngưỡng (${c.exact} pixel, max Δ ${c.max})`);
@@ -302,7 +304,13 @@ async function main() {
         } else ok(`hiệu năng trong ±${Math.round(PERF_TOL * 100)}% baseline`);
       }
     }
-    info(`golden tổng ${((Date.now() - t00) / 1000).toFixed(1)}s`);
+    const total = `golden tổng ${((Date.now() - t00) / 1000).toFixed(1)}s`;
+    info(total);
+    // one-line summary as a CI annotation (readable from the PR without opening logs)
+    if (GH && !UPDATE) {
+      const perf = Object.entries(perfNow.fixtures).map(([n, f]) => `${n} ${f.msPerFrame}ms`).join(', ');
+      console.log(`::notice title=golden-frame::${total} · Chromium ${version} · ${nFrames} khung · lệch golden lớn nhất ${worst.exact} px (Δ${worst.max}, ${worst.key}) · ${perf} · calib ${perfNow.calibMs}ms`);
+    }
     return failed ? 1 : 0;
   } finally {
     if (browser) await browser.close().catch(() => {});
