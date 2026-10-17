@@ -317,7 +317,7 @@ export class Engine {
     const x = o.x ?? 0, y = o.y ?? 0, align = o.align ?? 'left';
     const left = align === 'center' ? x - r.width / 2 : align === 'right' ? x - r.width : x;
     const lh = r.height / Math.max(1, r.lines);
-    const top = y - r.size * 0.95, bottom = y + (r.lines - 1) * lh + r.size * 0.3;
+    const top = y - r.size * 1.05, bottom = y + (r.lines - 1) * lh + r.size * 0.3;
     const m = ctx.getTransform();
     const k = 1 / this.scale;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
