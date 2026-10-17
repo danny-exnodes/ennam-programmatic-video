@@ -12,7 +12,7 @@
     "seed:tvc": "node scripts/seed-tvc.js",
     "library": "node scripts/library-import.js",
     "render:demo": "node scripts/render-cli.js demo",
-    "check": "node scripts/check-shots.js"
+    "check": "bash scripts/ci-check.sh"
   },
   "engines": {
     "node": ">=20"

@@ -52,6 +52,10 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 
 Phím tắt: `Space` phát/dừng · `←/→` từng khung (`Shift` = 1 giây) · `Home` về đầu · `Ctrl/⌘+S` lưu.
 
+## Đóng góp
+
+Mở PR vào `main`; CI (`.github/workflows/ci.yml`) chạy `npm run check` — PR chỉ được merge khi CI xanh. Merge bằng squash.
+
 ## Kiến trúc
 
 Xem [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và API viết shot ở [docs/SHOT_API.md](docs/SHOT_API.md).
@@ -59,6 +63,7 @@ Xem [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và API viết shot ở [docs/S
 ## Script dev
 
 ```bash
+npm run check                                    # quality gate (cũng chạy trên CI cho mỗi PR)
 node scripts/sheet.js <projectId> out.jpg 3     # contact sheet render thật
 node scripts/frame.js <projectId> <shot> 0.5,1.2 out   # khung full-res của 1 shot
 node scripts/bench.js <projectId> 3              # đo thời gian render từng shot
