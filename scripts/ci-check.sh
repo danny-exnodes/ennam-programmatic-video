@@ -52,6 +52,10 @@ if node scripts/test-jobs.js; then ok "job queue (test-jobs.js)"; else bad "job 
 #     khoá user ≤ cache, token chỉ lưu băm, không lộ secret trong log, userId trên job + lịch sử (server con)
 if node scripts/test-auth.js; then ok "tài khoản + phiên + token (test-auth.js)"; else bad "tài khoản (scripts/test-auth.js)"; fi
 
+# 7c. Đạo diễn offline (stub client, không gọi API): prompt caching + brief có cấu trúc (#9)
+if node scripts/test-director-cache.js >/dev/null; then ok "director cache (test-director-cache.js)"; else bad "director cache (scripts/test-director-cache.js)"; fi
+if node scripts/test-brief.js; then ok "brief có cấu trúc (test-brief.js)"; else bad "brief có cấu trúc (scripts/test-brief.js)"; fi
+
 # 8. Golden-frame render: so khớp ảnh, tất định, hiệu năng (scripts/golden.js tự in PASS/FAIL/WARN)
 if [ -n "${SKIP_GOLDEN:-}" ]; then
   if [ -n "${CI:-}" ]; then bad "SKIP_GOLDEN không được phép trên CI"; else warn "bỏ qua golden-frame (SKIP_GOLDEN=1)"; fi
@@ -67,6 +71,15 @@ if [ -n "${SKIP_GOLDEN:-}" ]; then
 else
   node scripts/test-qa.js; qc=$?
   [ $qc = 0 ] || { fail=1; echo "FAIL  test-qa (exit $qc)"; }
+fi
+
+# 9. Mẫu theo mùa (#24): mọi công thức theo mùa render ở 16:9 + 9:16 qua đường inspect của đạo diễn,
+#    không lỗi QA (chữ tràn vùng an toàn, đen, trống, throw); prompt đạo diễn không đổi (scripts/test-seasonal.js)
+if [ -n "${SKIP_GOLDEN:-}" ]; then
+  [ -z "${CI:-}" ] && warn "bỏ qua test-seasonal (SKIP_GOLDEN=1)"
+else
+  node scripts/test-seasonal.js; sc=$?
+  [ $sc = 0 ] || { fail=1; echo "FAIL  test-seasonal (exit $sc)"; }
 fi
 
 [ $fail = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"

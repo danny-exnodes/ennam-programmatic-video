@@ -42,9 +42,11 @@ const sleep = (ms, signal) => new Promise((res, rej) => {
 export function registerDefaultKinds() {
   registerKind('director', {
     lane: 'director',
-    run: async ({ brief = '', shotId = null, review = true }, ctx) => {
+    // params: { request, shotId, review } — old jobs may carry `brief` (string = legacy request);
+    // the structured brief is read from the project itself (project.brief) when the job starts.
+    run: async ({ brief = '', request, shotId = null, review = true }, ctx) => {
       const p = await store.loadProject(ctx.job.projectId);
-      const next = await runDirector(p, { brief, shotId, review, log: ctx.log, progress: ctx.progress, signal: ctx.signal });
+      const next = await runDirector(p, { brief, request, shotId, review, log: ctx.log, progress: ctx.progress, signal: ctx.signal });
       const userId = ctx.job.userId || null;
       if (next.lastDirector) {
         next.lastDirector.userId = userId;

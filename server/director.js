@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
-import { projectDir, newId } from './store.js';
+import { projectDir, newId, normalizeBrief, compactBrief } from './store.js';
 import { thumbBase64, videoStillBase64 } from './media.js';
 import { inspectProject } from './render.js';
 import { qaIssues, describeQa, metricsLine, isRuntimeFailure } from './qa.js';
@@ -152,6 +152,9 @@ function projectForPrompt(p) {
     music: p.music ? { volume: p.music.volume } : null,
   }, null, 1);
 }
+
+/** Tiêu đề khối brief trong user turn (khoá JSON tiếng Anh, giải nghĩa tiếng Việt). */
+export const BRIEF_HEADER = 'BRIEF (JSON gọn, trường trống đã bỏ — subject: sản phẩm/sự kiện, message: thông điệp chính, moods: cảm xúc, duration: thời lượng mong muốn (giây), aspect: kênh/tỉ lệ khung, cta: kêu gọi hành động, notes: ghi chú tự do):';
 
 export const USAGE_FIELDS = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'];
 
@@ -326,23 +329,30 @@ function describeErrors(p, errs) {
  * Run the director. Returns the updated project (not yet saved).
  * shotId: limit the edit to one shot ("Nhờ đạo diễn" in the inspector).
  */
-export async function runDirector(project, { brief, shotId, review = true, log = () => {}, progress = () => {}, signal, cache = CACHE_DEFAULT } = {}) {
+export async function runDirector(project, { brief, request, shotId, review = true, log = () => {}, progress = () => {}, signal, cache = CACHE_DEFAULT } = {}) {
   if (!directorAvailable()) throw new Error('Chưa cấu hình ANTHROPIC_API_KEY trên server. Dùng tab "Nhanh" hoặc "Mẫu cảnh" để dựng không cần AI.');
   progress(0.05, 'Đạo diễn đang xem chất liệu');
   const { blocks, list } = await assetBlocks(project);
   const tool = shotId ? SHOT_TOOL : CUT_TOOL;
   const target = shotId ? project.shots.find((s) => s.id === shotId) : null;
+  // `brief` string = legacy edit request; `brief` object = structured brief overriding project.brief.
+  const legacy = typeof brief === 'string' ? brief.trim() : '';
+  const ask = (typeof request === 'string' && request.trim()) || legacy;
+  const structured = normalizeBrief(brief && typeof brief === 'object' ? brief : project.brief);
+  const briefJson = compactBrief(structured);
   const task = shotId
-    ? `Chỉ sửa shot "${target?.name}" (id ${shotId}). Giữ nguyên các shot khác. Yêu cầu: ${brief || 'làm shot này đẹp và chân thực hơn'}`
+    ? `Chỉ sửa shot "${target?.name}" (id ${shotId}). Giữ nguyên các shot khác. Yêu cầu: ${ask || 'làm shot này đẹp và chân thực hơn'}`
     : project.shots.length
-      ? `Sửa bản dựng hiện tại theo yêu cầu: ${brief || 'nâng chất lượng chuyển động và nhịp dựng'}. Giữ id các shot bạn giữ lại.`
-      : `Dựng video mới từ brief: ${brief || project.brief || 'video quảng cáo sản phẩm 15–20 giây'}`;
+      ? `Sửa bản dựng hiện tại theo yêu cầu: ${ask || (briefJson ? 'bám sát BRIEF và nâng chất lượng chuyển động, nhịp dựng' : 'nâng chất lượng chuyển động và nhịp dựng')}. Giữ id các shot bạn giữ lại.`
+      : `Dựng video mới từ brief: ${ask || (briefJson ? 'theo BRIEF ở trên' : 'video quảng cáo sản phẩm 15–20 giây')}`;
+  // Brief đi trong user turn (không đụng system prompt/tool schema → cache prefix giữ ổn định).
   const messages = [{
     role: 'user',
     content: [
       { type: 'text', text: `DANH SÁCH CHẤT LIỆU:\n${list}` },
       ...blocks,
       { type: 'text', text: `DỰ ÁN HIỆN TẠI (JSON):\n${projectForPrompt(project)}` },
+      ...(briefJson ? [{ type: 'text', text: `${BRIEF_HEADER}\n${briefJson}` }] : []),
       { type: 'text', text: `NHIỆM VỤ: ${task}` },
     ],
   }];
@@ -415,8 +425,10 @@ export async function runDirector(project, { brief, shotId, review = true, log =
     summary = r.input.summary || summary;
   }
   log(`Token cả lần chạy (${usage.rounds.length} lượt): ${usageLine(usage.total)}`);
-  next.lastDirector = { at: new Date().toISOString(), brief, summary, model: DIRECTOR_MODEL, usage };
-  if (!shotId && brief) next.brief = brief;
+  next.lastDirector = { at: new Date().toISOString(), brief: ask, summary, model: DIRECTOR_MODEL, usage };
+  // structured override → keep it with the project; legacy string on an empty brief → notes
+  if (!shotId && brief && typeof brief === 'object') next.brief = structured;
+  else if (!shotId && legacy && !briefJson) next.brief = normalizeBrief({ notes: legacy });
   progress(1, summary);
   return next;
 }
