@@ -161,3 +161,35 @@ details summary { cursor: pointer; padding: 8px 0; font-size: 14px; }
 @media (max-width: 1200px) {
   .layout { grid-template-columns: 280px 1fr 280px; }
 }
+
+/* login page + accounts (issue #25) */
+body.login-page { display: flex; align-items: center; justify-content: center; min-height: 100%; overflow: auto; padding: 16px; }
+.login-card { width: 100%; max-width: 360px; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 26px 24px 18px; }
+.login-brand { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.login-card h1 { font-size: 20px; margin: 14px 0 6px; }
+.login-card form button { margin-top: 16px; }
+.login-card a { color: #8fb0ff; }
+.login-error { margin-top: 12px; padding: 8px 10px; border-radius: 8px; background: rgba(255, 59, 59, 0.12); border: 1px solid rgba(255, 59, 59, 0.4); color: #ffb3b3; }
+.topbar { min-width: 0; }
+.topbar button { white-space: nowrap; }
+.save-state { white-space: nowrap; }
+.auth-banner { flex: 0 1 auto; min-width: 0; background: rgba(245, 181, 74, 0.14); border: 1px solid rgba(245, 181, 74, 0.5); color: var(--amber); border-radius: 999px; padding: 4px 12px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-menu { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; padding-left: 6px; border-left: 1px solid var(--line); }
+.user-menu .who { color: var(--muted); font-size: 12px; white-space: nowrap; margin-right: 4px; }
+.user-menu button { padding: 6px 9px; }
+.who-tag { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.row > .who-tag { flex: 0 0 auto; }
+.acct-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.acct-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.acct-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.acct-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.acct-table button { padding: 3px 8px; font-size: 12px; }
+.badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
+.badge.admin { color: #8fb0ff; border-color: rgba(63, 109, 246, 0.6); }
+.badge.off { color: #ffb3b3; border-color: rgba(255, 59, 59, 0.5); }
+.token-once { margin: 10px 0; padding: 10px; border-radius: 8px; background: rgba(47, 141, 78, 0.14); border: 1px solid rgba(47, 141, 78, 0.6); }
+.token-once code { display: block; margin: 6px 0; word-break: break-all; font-size: 12.5px; user-select: all; }
+.acct-section { margin-top: 18px; }
+.acct-section h4 { margin: 0 0 8px; font-size: 12.5px; }
+.acct-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.acct-form .full { grid-column: 1 / -1; }

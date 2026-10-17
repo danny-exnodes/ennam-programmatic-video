@@ -33,7 +33,11 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 | `DIRECTOR_PROMPT_CACHE` | Prompt caching cho đạo diễn (mặc định bật); đặt `0` để tắt khi đo đối chứng |
 | `DIRECTOR_CONCURRENCY` | Số job đạo diễn chạy đồng thời (mặc định 2); job vượt giới hạn xếp hàng FIFO. Render luôn chạy từng job một |
 | `JOBS_TEST_KINDS` | Chỉ dùng cho `scripts/test-jobs.js` (`1` = bật kind job giả và `POST /api/test/jobs`); không bật trên server thật |
-| `APP_PASSWORD` | Bật đăng nhập Basic Auth cho cả team (user bất kỳ, mật khẩu này) |
+| `APP_PASSWORD` | Mật khẩu chung cũ (Basic Auth, user bất kỳ). Khi chưa có tài khoản: bắt buộc cho cả team. Khi đã có tài khoản: còn được chấp nhận 30 ngày rồi bị bỏ — xem [Tài khoản](#tài-khoản--đăng-nhập) |
+| `COOKIE_SECURE` | `1` = cookie phiên luôn có cờ `Secure`; bỏ trống = tự bật khi request qua HTTPS hoặc `X-Forwarded-Proto: https` |
+| `TRUST_PROXY` | Đặt khi chạy sau reverse proxy / Cloudflare Tunnel (vd. `loopback` hoặc `1`) để rate limit đăng nhập theo IP thật (giá trị `trust proxy` của Express) |
+| `AUTH_CACHE_MS` | Thời gian cache `users.json` (mặc định 30000 ms): khoá/sửa tài khoản từ bên ngoài server có hiệu lực trong khoảng này |
+| `EMS_TOKEN` | Token cá nhân `ems_…` cho script dev chạy ở process riêng (`frame.js`, `sheet.js`, `bench.js`) khi server đã bật tài khoản |
 | `PORT` | Mặc định 5173 |
 | `DATA_DIR` | Nơi lưu dự án, chất liệu, video xuất (mặc định `./data`) |
 | `RENDER_WORKERS` | Số trang Chromium render song song (mặc định = số nhân − 1) |
@@ -42,6 +46,31 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 | `OPENAI_API_KEY` | TTS thay thế qua `/audio/speech` — tuỳ chọn |
 | `PEXELS_API_KEY` | Tải chất liệu có giấy phép từ Pexels qua `npm run library` — tuỳ chọn |
 | `PIXABAY_API_KEY` | Tải chất liệu có giấy phép từ Pixabay qua `npm run library` — tuỳ chọn |
+
+## Tài khoản & đăng nhập
+
+Mỗi người đăng nhập bằng tài khoản riêng (lưu ở `DATA_DIR/users.json`); Lịch sử, job và token đạo diễn AI gắn với người thực hiện.
+
+```bash
+npm run user:add -- danny --admin --name "Danny"     # tạo admin đầu tiên (hỏi mật khẩu, không hiện ký tự)
+echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # cho script cài đặt
+```
+
+- **Đăng nhập** ở `/login.html` → cookie phiên (HttpOnly, SameSite=Lax, 14 ngày, tự gia hạn khi dùng; phiên lưu phía server ở `DATA_DIR/sessions/`). Sai quá 10 lần / 15 phút / IP bị chặn tạm.
+- **Tài khoản** (nút trên thanh trên cùng): đổi mật khẩu, xem token đạo diễn đã dùng trong tháng, tạo / thu hồi **API token cá nhân** (`Authorization: Bearer ems_…`, dùng cho script hoặc app mobile). Token chỉ hiện một lần khi tạo; server chỉ lưu SHA-256.
+- **Quản trị** (admin): thêm tài khoản, khoá / mở khoá, đặt lại mật khẩu, xem token đạo diễn AI theo người theo tháng. Khoá một người → phiên và token của người đó bị từ chối ngay (sửa `users.json` từ ngoài: trong `AUTH_CACHE_MS`, mặc định 30 s).
+- Usage đạo diễn ghi ở job (`job.usage`, `job.userId`) và cộng dồn vào `DATA_DIR/usage/<YYYY-MM>.jsonl` (`{ at, userId, projectId, jobId, usage }`, không có brief hay secret) — job bị dọn sau 6 giờ nhưng log tháng thì giữ.
+- Dữ liệu trước khi có tài khoản (snapshot Lịch sử, job không có `userId`) vẫn hiển thị, người thực hiện là **"không rõ"**.
+
+**Chuyển tiếp từ `APP_PASSWORD`:**
+
+| Trạng thái | Đăng nhập |
+|---|---|
+| Chưa có tài khoản, không đặt `APP_PASSWORD` | Không yêu cầu (như trước) |
+| Chưa có tài khoản, có `APP_PASSWORD` | Basic Auth mật khẩu chung như cũ + banner "Hãy tạo tài khoản admin" |
+| Đã có ≥ 1 tài khoản | Phiên / token. `APP_PASSWORD` vẫn vào được thêm **30 ngày** kể từ lúc tạo tài khoản đầu tiên (`firstUserAt` trong `users.json`) kèm header `X-Auth-Warning`, cảnh báo trong log và banner; trang login có link "dùng mật khẩu chung cũ". Hết 30 ngày → bị từ chối |
+
+`/review/*` và tài nguyên của trang login nằm ngoài đăng nhập. Trang render headless của server dùng một token nội bộ ngẫu nhiên theo process (chỉ nhận từ loopback); script dev chạy riêng (`frame.js`, `sheet.js`, `bench.js`) cần `EMS_TOKEN` khi server đã có tài khoản.
 
 ## Giao diện
 
@@ -55,7 +84,8 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 - **Cột phải** — thuộc tính shot, chuyển cảnh, mục **Nội dung** (form tự sinh từ các `s.field` của shot: chữ, màu, số, ảnh từ Chất liệu; gõ là xem trước đổi ngay, không gọi AI; *Về mặc định* bỏ giá trị đã sửa), *Nhờ đạo diễn* cho riêng shot, sửa code trực tiếp (xem trước cập nhật ngay).
 - **Timeline** — kéo mép phải shot đổi độ dài, kéo shot đổi thứ tự, kéo câu thoại để dời, bấm thước để tua.
 - **Job** (tab Đạo diễn AI) — tiến độ đạo diễn/xuất video cập nhật tức thì qua SSE (tự chuyển sang poll nếu SSE lỗi); huỷ được cả job đang chờ. Job lưu ở `DATA_DIR/jobs/`, nên khi server khởi động lại giữa chừng job hiện **⚠️ gián đoạn** kèm log cũ và nút **↻ Chạy lại**.
-- **Lịch sử** — mọi lần AI/mẫu thay đổi đều lưu phiên bản cũ, khôi phục 1 chạm.
+- **Lịch sử** — mọi lần AI/mẫu thay đổi đều lưu phiên bản cũ, khôi phục 1 chạm; mỗi bản ghi tên người thực hiện (bản cũ: "không rõ"). Danh sách job cũng hiện tên người tạo job.
+- **Tài khoản / Quản trị / Đăng xuất** — góc phải thanh trên cùng (khi server đã có tài khoản), xem [Tài khoản](#tài-khoản--đăng-nhập).
 
 Phím tắt: `Space` phát/dừng · `←/→` từng khung (`Shift` = 1 giây) · `Home` về đầu · `Ctrl/⌘+S` lưu.
 
@@ -75,6 +105,7 @@ node scripts/sheet.js <projectId> out.jpg 3     # contact sheet render thật
 node scripts/frame.js <projectId> <shot> 0.5,1.2 out   # khung full-res của 1 shot
 node scripts/bench.js <projectId> 3              # đo thời gian render từng shot
 node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
+node scripts/test-auth.js                        # test tài khoản: 401, đăng nhập, rate limit, chuyển tiếp APP_PASSWORD, khoá user, token băm, userId trên job/lịch sử (tự bật server con)
 node scripts/test-jobs.js                        # test hàng đợi job: restart → interrupted, giới hạn song song, huỷ, render đọc project lúc chạy, SSE (tự bật server con)
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
@@ -94,10 +125,22 @@ Mặc định mỗi brief chạy 2 lần (không cache rồi có cache) và in b
 | `GET /api/jobs?project=<id>` · `GET /api/jobs/:id` | Trạng thái job: `queued` → `running` → `done` / `error` / `cancelled`, hoặc `interrupted` (server khởi động lại khi job đang chạy/chờ) |
 | `POST /api/jobs/:id/cancel` | Huỷ job đang chạy hoặc đang chờ (job chờ bị huỷ không bao giờ chạy) |
 | `POST /api/jobs/:id/retry` | "Chạy lại": tạo job mới cùng `kind` + `params` (trường `retryOf` trỏ về job cũ) |
+| (mọi job) | `userId` người tạo (null = job cũ / không đăng nhập) + `userName` tên hiển thị; job đạo diễn xong có `usage` (tổng 4 trường token) |
 | `GET /api/jobs/:id/events` | SSE: `event: job` (JSON job đầy đủ) mỗi khi đổi trạng thái/tiến độ; tự đóng khi job kết thúc; heartbeat `: ping` mỗi 15 s |
 | `GET /api/projects/:id/jobs/events` | SSE theo dự án: `event: jobs` (danh sách ban đầu) rồi `event: job` cho mọi job của dự án |
 
 Job render đọc lại dự án **lúc bắt đầu chạy** (không phải lúc bấm xuất) và ghi `projectUpdatedAt` của bản đã dùng. Nếu đặt sau reverse proxy, tắt buffering cho `/api/*/events` (server đã gửi `X-Accel-Buffering: no`).
+
+### API tài khoản
+
+| Route | Ý nghĩa |
+|---|---|
+| `POST /api/auth/login` `{ username, password }` · `POST /api/auth/logout` | Đăng nhập (đặt cookie `ems_session`) / đăng xuất |
+| `GET /api/auth/status` | `{ mode: open\|legacy\|accounts, via, user, banner, transitionEndsAt }` (công khai) |
+| `GET/POST /api/account/tokens` · `DELETE /api/account/tokens/:id` | Token cá nhân: liệt kê / tạo (trả token gốc một lần) / thu hồi |
+| `POST /api/account/password` `{ current, password }` · `GET /api/account/usage?month=YYYY-MM` | Đổi mật khẩu (đăng xuất các phiên khác) · usage của mình |
+| `GET/POST /api/admin/users` · `PATCH /api/admin/users/:id` `{ status, role, name }` · `POST /api/admin/users/:id/password` | Admin: tài khoản, khoá/mở, đặt lại mật khẩu |
+| `GET /api/admin/usage?month=YYYY-MM` | Admin: token đạo diễn theo người trong tháng (`rows[]`, `months[]`) |
 
 ### Golden-frame (kiểm tra hình ảnh tự động)
 

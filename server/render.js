@@ -9,6 +9,7 @@ import os from 'node:os';
 import { chromium } from 'playwright-core';
 import { FFMPEG, run } from './media.js';
 import { projectDir } from './store.js';
+import { renderAuthHeaders } from './auth.js';
 
 let browserP = null;
 
@@ -56,7 +57,8 @@ export async function openRenderPage(projectId, { override, scale = 1 } = {}) {
   const browser = await getBrowser();
   const ctx = await browser.newContext({
     viewport: { width: 800, height: 600 },
-    httpCredentials: process.env.APP_PASSWORD ? { username: 'team', password: process.env.APP_PASSWORD } : undefined,
+    // pass server/auth.js: internal per-process token (server process) + EMS_TOKEN / APP_PASSWORD for dev scripts
+    extraHTTPHeaders: renderAuthHeaders(),
   });
   const page = await ctx.newPage();
   const logs = [];

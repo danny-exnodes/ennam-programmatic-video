@@ -48,6 +48,10 @@ if [ "$c1" = 200 ] && [ "$c2" = 200 ]; then ok "server khởi động, phục v�
 # 7. Hàng đợi job bền vững: lưu/restart → interrupted, giới hạn song song, huỷ, SSE (server con, kind giả)
 if node scripts/test-jobs.js; then ok "job queue (test-jobs.js)"; else bad "job queue (scripts/test-jobs.js)"; fi
 
+# 7b. Tài khoản riêng (#25): 401 khi có user, đăng nhập, rate limit, chuyển tiếp APP_PASSWORD 30 ngày,
+#     khoá user ≤ cache, token chỉ lưu băm, không lộ secret trong log, userId trên job + lịch sử (server con)
+if node scripts/test-auth.js; then ok "tài khoản + phiên + token (test-auth.js)"; else bad "tài khoản (scripts/test-auth.js)"; fi
+
 # 8. Golden-frame render: so khớp ảnh, tất định, hiệu năng (scripts/golden.js tự in PASS/FAIL/WARN)
 if [ -n "${SKIP_GOLDEN:-}" ]; then
   if [ -n "${CI:-}" ]; then bad "SKIP_GOLDEN không được phép trên CI"; else warn "bỏ qua golden-frame (SKIP_GOLDEN=1)"; fi
