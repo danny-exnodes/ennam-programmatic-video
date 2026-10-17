@@ -1,0 +1,45 @@
+{
+  "id": "gliquid",
+  "name": "Golden · chất lỏng (vương miện + rót)",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "style": {
+    "grade": "none",
+    "vignette": 0,
+    "grain": 0,
+    "bloom": 0,
+    "letterbox": 0,
+    "palette": {
+      "primary": "#f08a12",
+      "accent": "#f5b54a",
+      "text": "#ffffff"
+    }
+  },
+  "assets": [],
+  "voice": [],
+  "music": null,
+  "exports": [],
+  "shots": [
+    {
+      "id": "gliquid0",
+      "transition": {
+        "type": "cut"
+      },
+      "name": "Crown + pour",
+      "duration": 2.5,
+      "code": "const { W, H } = s;\ns.background({ radial: ['#3a2a1a', '#0d0906'], x: W * 0.5, y: H * 0.6, r: W * 0.8 });\ns.fx.liquidCrown({ x: W * 0.36, y: H * 0.7, radius: 230, start: 0.45, material: 'milk', energy: 1.1, light: { x: -0.5, y: -0.8 } });\ns.fx.pour({ x: W * 0.72, y: -20, surfaceY: H * 0.76, width: 40, start: 0.1, end: 2.2, material: 'honey' });\ns.droplet({ x: W * 0.55, y: H * 0.3, r: 40, material: 'serum', vy: 600 });"
+    }
+  ],
+  "golden": {
+    "frames": [
+      {
+        "t": 0.62
+      },
+      {
+        "t": 1.1,
+        "motionBlur": 2
+      }
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "id": "gtext",
+  "name": "Golden · chữ tiếng Việt",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "style": {
+    "grade": "none",
+    "vignette": 0,
+    "grain": 0,
+    "bloom": 0,
+    "letterbox": 0,
+    "palette": {
+      "primary": "#0f6b3a",
+      "accent": "#f5b54a",
+      "text": "#ffffff"
+    }
+  },
+  "assets": [],
+  "voice": [],
+  "music": null,
+  "exports": [],
+  "shots": [
+    {
+      "id": "gtext0",
+      "transition": {
+        "type": "cut"
+      },
+      "name": "Chữ Việt",
+      "duration": 2.5,
+      "code": "const { W, H } = s;\ns.background(['#123524', '#06140d']);\ns.text('Sáng mịn *tươi tắn* mỗi ngày', { x: W / 2, y: H * 0.42, size: 120, weight: 800, align: 'center', anim: 'rise', start: 0.1, dur: 0.8 });\ns.text('Ưu đãi đặc biệt: giảm 30% — Hà Nội, Đà Nẵng, TP. Hồ Chí Minh', { x: W / 2, y: H * 0.58, size: 54, weight: 400, font: 'serif', italic: true, align: 'center', anim: 'fade', start: 0.4, dur: 0.6, maxWidth: 1500 });\ns.underline({ x: W / 2 - 300, y: H * 0.46, width: 600, thickness: 8, start: 0.6, dur: 0.6 });\ns.badge({ icon: 'leaf', label: 'Thiên nhiên', x: W * 0.3, y: H * 0.8, size: 120, start: 0.8 });\ns.badge({ icon: 'shield', label: 'Bảo vệ', x: W * 0.7, y: H * 0.8, size: 120, start: 1.0 });"
+    }
+  ],
+  "golden": {
+    "frames": [
+      {
+        "t": 0.5
+      },
+      {
+        "t": 2
+      }
+    ]
+  }
+}

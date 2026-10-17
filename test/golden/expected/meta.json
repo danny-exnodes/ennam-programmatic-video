@@ -1,0 +1,5 @@
+{
+  "chromium": "153.0.8010.0",
+  "scale": 0.25,
+  "note": "sinh bởi node scripts/golden.js --update"
+}

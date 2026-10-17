@@ -35,7 +35,8 @@ export async function getBrowser() {
     browserP = chromium.launch({
       executablePath: findChrome(),
       headless: true,
-      args: ['--disable-web-security', '--autoplay-policy=no-user-gesture-required', ...(process.env.RENDER_GPU ? ['--use-gl=angle', '--enable-gpu-rasterization'] : ['--disable-gpu', '--disable-accelerated-2d-canvas', '--disable-gpu-compositing'])],
+      // CHROME_ARGS: extra space-separated flags (scripts/golden.js pins font hinting this way)
+      args: ['--disable-web-security', '--autoplay-policy=no-user-gesture-required', ...(process.env.CHROME_ARGS || '').split(' ').filter(Boolean), ...(process.env.RENDER_GPU ? ['--use-gl=angle', '--enable-gpu-rasterization'] : ['--disable-gpu', '--disable-accelerated-2d-canvas', '--disable-gpu-compositing'])],
     }).catch((e) => {
       browserP = null;
       throw new Error('Không mở được Chromium để render. Cài bằng `npx playwright install chromium` hoặc đặt CHROME_PATH. ' + e.message);

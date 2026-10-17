@@ -21,10 +21,11 @@ async function boot(project) {
 
 window.__setProject = (p) => boot(p);
 
-async function frame(t, mb = 1) {
+// fmt 'png' = lossless (golden-frame tests), default JPEG for the MP4 pipe.
+async function frame(t, mb = 1, fmt = 'jpeg') {
   engine.renderFrame(t, { motionBlur: mb });
   if (await engine.syncVideos()) engine.renderFrame(t, { motionBlur: mb });
-  return canvas.toDataURL('image/jpeg', 0.94).split(',')[1];
+  return (fmt === 'png' ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.94)).split(',')[1];
 }
 window.__frame = frame;
 
