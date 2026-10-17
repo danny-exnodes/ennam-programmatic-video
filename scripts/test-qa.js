@@ -80,7 +80,13 @@ async function detection() {
   }
   const covered = new Set(fx.map((f) => f.expect));
   for (const c of QA_CODES) if (!covered.has(c)) bad(`thiếu fixture cho loại lỗi ${c}`);
-  info(`phát hiện ${hit}/${broken} shot lỗi (${broken ? Math.round((hit / broken) * 100) : 0}%)`);
+  const pct = broken ? Math.round((hit / broken) * 100) : 0;
+  info(`phát hiện ${hit}/${broken} shot lỗi (${pct}%)`);
+  // one-line CI annotation, readable from the PR without opening logs
+  if (GH) {
+    const healthy = fx.filter((f) => f.expect === 'none').map((f) => `${f.file} ${(issues[f.shot.id] || []).length} lỗi`).join(', ');
+    console.log(`::notice title=test-qa::phát hiện ${hit}/${broken} shot cố ý lỗi (${pct}%) · ${healthy}`);
+  }
   assert.ok(typeof insp.sheet === 'string' && insp.sheet.length > 1000, 'contact sheet vẫn được trả về');
 }
 
@@ -224,6 +230,7 @@ async function main() {
     await directorGuard();
     await storeRules();
     info(`test-qa tổng ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    if (GH) console.log(`::notice title=test-qa::${failed ? 'FAIL' : 'PASS'} · guard đạo diễn + needsReview · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     return failed ? 1 : 0;
   } finally {
     if (browser) await browser.close().catch(() => {});
