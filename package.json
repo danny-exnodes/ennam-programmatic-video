@@ -9,7 +9,7 @@
     "dev": "node --watch server/index.js",
     "seed": "node scripts/seed-demo.js",
     "render:demo": "node scripts/render-cli.js demo",
-    "check": "node scripts/check-shots.js"
+    "check": "bash scripts/ci-check.sh"
   },
   "engines": {
     "node": ">=20"
