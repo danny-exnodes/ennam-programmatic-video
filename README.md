@@ -18,6 +18,7 @@ npm start                              # http://localhost:5173
 npm run seed                           # (tuỳ chọn) tạo dự án demo "Lumi C+"
 npm run seed:nature                    # (tuỳ chọn) demo vật lý thiên nhiên: gió, lá rơi, nước chảy, giọt sương
 npm run seed:tvc                       # (tuỳ chọn) TVC 30s Én Nam (xem docs/TVC_EN_NAM.md)
+npm run seed:yearend                   # (tuỳ chọn) 3 dự án demo bộ mẫu Year End / Gala (thêm `-- --vertical` để có bản 9:16)
 npm run library -- --provider pexels --query "forest stream" --type video   # tải chất liệu có giấy phép (library/sources.json)
 pip install -r scripts/requirements.txt   # (tuỳ chọn) cho scripts/photo/prep.py và scripts/audio/*
 ```
@@ -46,8 +47,15 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 ## Giao diện
 
 - **Đạo diễn AI** — viết brief → Claude dựng/sửa cả video; Contact sheet; Xuất MP4; danh sách bản đã xuất; Storyboard.
-- **Nhanh** — dựng ngay từ công thức (Quảng cáo sản phẩm, Teaser, Recap sự kiện) không cần AI.
-- **Mẫu cảnh** — chèn cảnh mẫu (giọt rơi vương miện, rót chất lỏng, sản phẩm rơi nảy, bùng nổ thành phần, 3 lợi ích, CTA, Ken Burns).
+- **Nhanh** — dựng ngay từ công thức (Quảng cáo sản phẩm, Teaser, Recap sự kiện) không cần AI. Bộ lọc **Theo mùa** hiện các bộ mẫu mùa sự kiện; chọn công thức theo mùa thì form chuyển sang thông tin khách (công ty, tên sự kiện, dòng phụ, chủ đề, ngày giờ, địa điểm, màu nhấn) và điền sẵn vào trường sửa được của mọi shot.
+- **Mẫu cảnh** — chèn cảnh mẫu (giọt rơi vương miện, rót chất lỏng, sản phẩm rơi nảy, bùng nổ thành phần, 3 lợi ích, CTA, Ken Burns); bộ lọc **Theo mùa** hiện cảnh của từng bộ mẫu mùa.
+
+#### Bộ mẫu theo mùa
+| Bộ | Cảnh (vật lý, tất định) | Công thức nhanh |
+|---|---|---|
+| **Year End / Gala** (`server/templates/seasonal/yearend.js`) | đèn moving-head quét qua khói, bokeh vàng, pháo giấy kim tuyến bắn từ hai góc + tia lửa + kim tuyến rơi, số năm 2026 → 2027 cuộn và bùng nổ, đếm ngược 10 → 0 trên mặt đồng hồ, thiệp mời viền vàng, lời chào | Teaser 10s · Mở màn LED 20s · Countdown 10→0 (10s) |
+
+Mọi chữ, ngày, địa điểm, tên khách, logo và màu nhấn là `s.field` (sửa ở Inspector, không cần AI); bố cục theo tỉ lệ W/H nên chạy cả 16:9 và 9:16. Mẫu theo mùa **không** nằm trong ví dụ few-shot của đạo diễn (giữ system prompt cố định để cache). Thêm bộ mới: tạo `server/templates/seasonal/<mùa>.js` (export `SEASON, DEFAULTS, FORM_FIELDS, SCENES, RECIPES` với `season`) và thêm vào mảng `SEASONAL` trong `server/templates.js`.
 - **Media** — tải ảnh/video/nhạc. Đặt tên & mô tả để đạo diễn hiểu vai trò. PNG nền trong suốt cho sản phẩm.
 - **Lồng tiếng** — câu thoại trên timeline, tạo giọng AI hoặc tải thu âm.
 - **Nhạc** — nhạc nền, âm lượng, fade.
@@ -78,6 +86,7 @@ node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
 node scripts/test-jobs.js                        # test hàng đợi job: restart → interrupted, giới hạn song song, huỷ, render đọc project lúc chạy, SSE (tự bật server con)
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
+node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống (~10s)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 ```
 
@@ -101,7 +110,7 @@ Job render đọc lại dự án **lúc bắt đầu chạy** (không phải lú
 
 ### Golden-frame (kiểm tra hình ảnh tự động)
 
-`npm run check` render các fixture trong `test/golden/fixtures/` (chất lỏng, chữ tiếng Việt, `s.photo` với ảnh/depth/mask/flow tổng hợp, thiên nhiên WebGL, hậu kỳ) ở scale 0.25 và so với ảnh trong `test/golden/expected/`:
+`npm run check` render các fixture trong `test/golden/fixtures/` (chất lỏng, chữ tiếng Việt, `s.photo` với ảnh/depth/mask/flow tổng hợp, thiên nhiên WebGL, hậu kỳ, mẫu Year End: đèn sân khấu + pháo giấy kim tuyến) ở scale 0.25 và so với ảnh trong `test/golden/expected/`:
 
 - **Khớp ảnh** — pixel lệch > 8/255 bị tính là sai; quá 0.1% số pixel → FAIL. Ảnh `*.actual.png`, `*.expected.png`, `*.diff.png` (đỏ = lệch quá ngưỡng, vàng = lệch nhỏ) ở `test/golden/out/` (CI tải lên artifact `golden-diff`).
 - **Tất định** — mỗi khung render 2 lần ở 2 trang mới → phải giống hệt từng bit. Lần thứ 3 theo thứ tự ngược chỉ cảnh báo.

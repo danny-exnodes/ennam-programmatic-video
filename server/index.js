@@ -11,7 +11,7 @@ import { initJobs, createJob, getJob, publicJob, listJobs, cancelJob, retryJob, 
 import { registerDefaultKinds } from './job-kinds.js';
 import { directorAvailable, DIRECTOR_MODEL } from './director.js';
 import { synthesize, ttsAvailable, listVoices } from './tts.js';
-import { TEMPLATES, buildFromTemplate } from './templates.js';
+import { TEMPLATES, SEASONS, SEASONAL_SCENES, buildFromTemplate } from './templates.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 5173);
@@ -52,7 +52,9 @@ app.get('/api/config', wrap(async (_req, res) => {
   res.json({
     director: directorAvailable(), model: DIRECTOR_MODEL,
     tts: ttsAvailable(), voices: ttsAvailable() ? await listVoices().catch(() => []) : [],
-    templates: TEMPLATES.map(({ id, name, desc, aspect }) => ({ id, name, desc, aspect })),
+    templates: TEMPLATES.map(({ id, name, desc, aspect, season }) => ({ id, name, desc, aspect, season: season || null })),
+    seasons: SEASONS,
+    seasonalScenes: Object.entries(SEASONAL_SCENES).map(([id, sc]) => ({ id, name: sc.name, desc: sc.desc, season: sc.season })),
   });
 }));
 

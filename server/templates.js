@@ -2,6 +2,7 @@
 // Each scene is real shot code — the same code the AI director writes —
 // so the team can start from a template and then ask the director to refine.
 import { newId } from './store.js';
+import * as yearend from './templates/seasonal/yearend.js';
 
 const J = (v) => JSON.stringify(v);
 
@@ -187,7 +188,7 @@ s.text(headline, { x: W * 0.08, y: H * 0.85, size: 64, weight: 700, anim: 'rise'
   },
 };
 
-export const TEMPLATES = [
+const BASE_TEMPLATES = [
   {
     id: 'product-ad', name: 'Quảng cáo sản phẩm 15–20s', aspect: '16:9',
     desc: 'Hook → giọt bắn → thành phần → lợi ích → CTA', scenes: ['hook', 'splash', 'ingredient', 'features', 'cta'],
@@ -200,6 +201,34 @@ export const TEMPLATES = [
   },
 ];
 
+// Seasonal bundles ("Theo mùa"): server/templates/seasonal/*.js. Their scenes are kept
+// out of SCENES on purpose — director.js builds its cached system prompt from SCENES.
+const SEASONAL = [yearend];
+export const SEASONS = SEASONAL.map((m) => ({ ...m.SEASON, fields: m.FORM_FIELDS, defaults: m.DEFAULTS }));
+export const SEASONAL_SCENES = Object.fromEntries(SEASONAL.flatMap((m) =>
+  Object.entries(m.SCENES).map(([k, v]) => [k, { ...v, season: m.SEASON.id }])));
+/** All quick recipes: base ones, then season-tagged ones (`season: 'yearend'`, …). */
+export const TEMPLATES = [...BASE_TEMPLATES, ...SEASONAL.flatMap((m) => m.RECIPES)];
+
+/** Seasonal recipe → shots. Form values (company, date, …) prefill shot.fields; empty values keep defaults. */
+function buildSeasonal(p, tpl, fields = {}) {
+  const pre = {};
+  for (const [k, v] of Object.entries(fields || {})) if (typeof v === 'string' && v.trim()) pre[k] = v.trim();
+  p.shots = tpl.scenes.map((e, i) => {
+    const sc = SEASONAL_SCENES[e.scene];
+    return {
+      id: newId('s'),
+      name: sc.name,
+      duration: e.duration ?? sc.duration,
+      transition: i === 0 ? { type: 'cut', duration: 0.5 } : (e.transition || { type: 'dissolve', duration: 0.5 }),
+      code: sc.code(e.opts || {}),
+      fields: { ...pre },
+    };
+  });
+  if (tpl.style) p.style = { ...p.style, ...tpl.style };
+  return p;
+}
+
 function pickAssets(p) {
   const imgs = p.assets.filter((a) => a.type === 'image' || a.type === 'video');
   const by = (re) => imgs.find((a) => re.test(a.name) || re.test(a.desc || ''));
@@ -209,7 +238,17 @@ function pickAssets(p) {
   return { product: product?.name, ingredient: ingredient?.name, bgs: bgs.map((a) => a.name), all: imgs.map((a) => a.name) };
 }
 
-export function buildFromTemplate(project, { template, scene, at, headline, features, material, cta } = {}) {
+export function buildFromTemplate(project, { template, scene, at, headline, features, material, cta, fields } = {}) {
+  if (scene && SEASONAL_SCENES[scene]) {
+    const p = structuredClone(project);
+    const sc = SEASONAL_SCENES[scene];
+    const shot = { id: newId('s'), name: sc.name, duration: sc.duration, transition: { type: p.shots.length ? 'dissolve' : 'cut', duration: 0.5 }, code: sc.code({}), fields: {} };
+    const idx = at == null ? p.shots.length : Math.max(0, Math.min(p.shots.length, at));
+    p.shots.splice(idx, 0, shot);
+    return p;
+  }
+  const seasonal = template && TEMPLATES.find((x) => x.id === template && x.season);
+  if (seasonal) return buildSeasonal(structuredClone(project), seasonal, fields);
   const A = pickAssets(project);
   const make = (key, i, extra = {}) => {
     const sc = SCENES[key];
@@ -230,7 +269,7 @@ export function buildFromTemplate(project, { template, scene, at, headline, feat
     p.shots.splice(idx, 0, shot);
     return p;
   }
-  const tpl = TEMPLATES.find((x) => x.id === template) || TEMPLATES[0];
+  const tpl = BASE_TEMPLATES.find((x) => x.id === template) || BASE_TEMPLATES[0];
   p.shots = tpl.scenes.map((k, i) => make(k, i));
   return p;
 }

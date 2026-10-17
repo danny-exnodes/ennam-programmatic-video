@@ -184,13 +184,26 @@ export function playExport(file) {
 }
 
 // ---------------------------------------------------------------- quick
+// "Theo mùa" filter shared by the Nhanh and Mẫu cảnh tabs: 'all' | 'base' | 'seasonal'.
+let seasonFilter = 'all';
+function seasonChips(onChange) {
+  const opts = [['all', 'Tất cả'], ['base', 'Cơ bản'], ['seasonal', 'Theo mùa']];
+  return h('div', { class: 'chips' }, opts.map(([v, label]) => h('button', {
+    class: 'chip' + (seasonFilter === v ? ' active' : ''),
+    onclick: () => { seasonFilter = v; onChange(); },
+  }, label)));
+}
+const seasonName = (id) => (state.config.seasons || []).find((x) => x.id === id)?.name || id;
+
 function quick() {
   const p = state.project;
-  const tpl = h('select', {}, state.config.templates.map((t) => h('option', { value: t.id }, t.name)));
+  const all = state.config.templates;
+  const list = all.filter((t) => seasonFilter === 'all' || (seasonFilter === 'seasonal' ? t.season : !t.season));
+  const groups = [[null, list.filter((t) => !t.season)], ...[...new Set(list.filter((t) => t.season).map((t) => t.season))].map((id) => [id, list.filter((t) => t.season === id)])];
+  const tpl = h('select', {}, groups.filter(([, g]) => g.length).map(([id, g]) => h('optgroup', { label: id ? `Theo mùa · ${seasonName(id)}` : 'Cơ bản' },
+    g.map((t) => h('option', { value: t.id }, t.name)))));
   const desc = h('div', { class: 'small muted', style: { marginTop: '6px' } });
-  const setDesc = () => (desc.textContent = state.config.templates.find((t) => t.id === tpl.value)?.desc || '');
-  tpl.onchange = setDesc;
-  setDesc();
+  const box = h('div');
   const headline = h('input', { placeholder: 'Tiêu đề chính (để trống = mặc định)' });
   const mat = h('select', {}, Object.entries(MATERIALS).map(([k, m]) => h('option', { value: k }, m.label)));
   const feats = [0, 1, 2].map((i) => {
@@ -199,23 +212,53 @@ function quick() {
     return { icon, label, row: h('div', { class: 'row', style: { marginBottom: '6px' } }, h('div', { style: { flex: '0 0 96px' } }, icon), label) };
   });
   const cta = h('input', { value: 'Mua ngay' });
-  return h('div', {},
-    h('h3', {}, 'Dựng nhanh từ mẫu'),
-    h('p', { class: 'small muted' }, 'Không cần AI. Tự gán chất liệu theo tên (hero/bottle = sản phẩm, splash/orange = thành phần, còn lại làm nền). Sau đó có thể nhờ đạo diễn tinh chỉnh.'),
-    h('label', {}, 'Công thức'), tpl, desc,
+  const baseForm = h('div', {},
     h('label', {}, 'Tiêu đề'), headline,
     h('label', {}, 'Chất liệu chất lỏng'), mat,
     h('label', {}, '3 lợi ích (icon + nhãn)'), feats.map((f) => f.row),
-    h('label', {}, 'Nút CTA'), cta,
+    h('label', {}, 'Nút CTA'), cta);
+  // Seasonal recipes: one form for the shared fields (company, date, venue…) → shot.fields of every shot.
+  const seasonInputs = {};
+  const seasonForm = (season) => {
+    const s = (state.config.seasons || []).find((x) => x.id === season);
+    if (!s) return h('div');
+    return h('div', {}, h('p', { class: 'small muted' }, 'Điền thông tin khách — để trống giữ chữ mẫu. Sau khi dựng, sửa từng shot ở tab Nội dung (Inspector).'),
+      s.fields.map((f) => {
+        const inp = f.type === 'color'
+          ? h('input', { type: 'color', value: s.defaults[f.key] || '#d9b45f' })
+          : h('input', { placeholder: s.defaults[f.key] || '', maxLength: f.maxLength || 60 });
+        seasonInputs[f.key] = inp;
+        return [h('label', {}, f.label), inp];
+      }));
+  };
+  const cur = () => all.find((t) => t.id === tpl.value);
+  const sync = () => {
+    const t = cur();
+    desc.textContent = t ? `${t.desc}${t.aspect ? ` · ${t.aspect}` : ''}` : '';
+    for (const k of Object.keys(seasonInputs)) delete seasonInputs[k];
+    box.replaceChildren(t?.season ? seasonForm(t.season) : baseForm);
+  };
+  tpl.onchange = sync;
+  sync();
+  return h('div', {},
+    h('h3', {}, 'Dựng nhanh từ mẫu'),
+    h('p', { class: 'small muted' }, 'Không cần AI. Tự gán chất liệu theo tên (hero/bottle = sản phẩm, splash/orange = thành phần, còn lại làm nền). Sau đó có thể nhờ đạo diễn tinh chỉnh.'),
+    seasonChips(renderPanel),
+    h('label', {}, 'Công thức'), list.length ? tpl : h('p', { class: 'small muted' }, 'Chưa có công thức trong nhóm này.'), desc,
+    box,
     h('button', {
-      class: 'primary block', style: { marginTop: '14px' },
+      class: 'primary block', style: { marginTop: '14px' }, disabled: !list.length,
       onclick: async () => {
         if (p.shots.length && !confirm('Thay toàn bộ shot hiện tại bằng mẫu? (có lưu lịch sử để khôi phục)')) return;
         await saveNow();
-        const np = await api.template(p.id, {
-          template: tpl.value, headline: headline.value || undefined, material: mat.value, cta: cta.value,
-          features: feats.map((f) => ({ icon: f.icon.value, label: f.label.value })),
-        });
+        const t = cur();
+        const body = t?.season
+          ? { template: t.id, fields: Object.fromEntries(Object.entries(seasonInputs).map(([k, el]) => [k, el.type === 'color' && el.value === (state.config.seasons.find((x) => x.id === t.season)?.defaults[k]) ? '' : el.value])) }
+          : {
+            template: tpl.value, headline: headline.value || undefined, material: mat.value, cta: cta.value,
+            features: feats.map((f) => ({ icon: f.icon.value, label: f.label.value })),
+          };
+        const np = await api.template(p.id, body);
         setProject(np, { keepSelection: false });
         toast('Đã dựng ' + np.shots.length + ' shot từ mẫu');
       },
@@ -238,22 +281,32 @@ const SCENE_LIST = [
 function scenes() {
   const p = state.project;
   const mat = h('select', {}, Object.entries(MATERIALS).map(([k, m]) => h('option', { value: k }, m.label)));
+  const card = ([id, name, desc]) => h('div', {
+    class: 'card',
+    onclick: async () => {
+      await saveNow();
+      const sel = p.shots.findIndex((s) => s.id === state.selectedShot);
+      const np = await api.template(p.id, { scene: id, at: sel + 1, material: mat.value });
+      const added = np.shots[sel + 1];
+      setProject(np);
+      if (added) selectShot(added.id);
+      toast('Đã thêm cảnh: ' + name);
+    },
+  }, h('strong', {}, name), h('div', { class: 'muted' }, desc));
+  const seasonal = state.config.seasonalScenes || [];
+  const bySeason = [...new Set(seasonal.map((x) => x.season))];
   return h('div', {},
     h('h3', {}, 'Thêm cảnh mẫu'),
     h('p', { class: 'small muted' }, 'Chèn sau shot đang chọn. Mỗi cảnh là code thật — sửa được ở cột phải.'),
-    h('label', {}, 'Chất liệu chất lỏng'), mat, h('div', { style: { height: '12px' } }),
-    SCENE_LIST.map(([id, name, desc]) => h('div', {
-      class: 'card',
-      onclick: async () => {
-        await saveNow();
-        const sel = p.shots.findIndex((s) => s.id === state.selectedShot);
-        const np = await api.template(p.id, { scene: id, at: sel + 1, material: mat.value });
-        const added = np.shots[sel + 1];
-        setProject(np);
-        if (added) selectShot(added.id);
-        toast('Đã thêm cảnh: ' + name);
-      },
-    }, h('strong', {}, name), h('div', { class: 'muted' }, desc))),
+    seasonChips(renderPanel),
+    seasonFilter !== 'seasonal' ? [
+      h('label', {}, 'Chất liệu chất lỏng'), mat, h('div', { style: { height: '12px' } }),
+      SCENE_LIST.map(card),
+    ] : null,
+    seasonFilter !== 'base' ? bySeason.map((id) => [
+      h('div', { class: 'section-title' }, `Theo mùa · ${seasonName(id)}`),
+      seasonal.filter((x) => x.season === id).map((x) => card([x.id, x.name, x.desc])),
+    ]) : null,
   );
 }
 
