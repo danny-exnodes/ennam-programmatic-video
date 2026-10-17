@@ -45,5 +45,13 @@ c2=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$PORT/engine/engin
 kill $SP 2>/dev/null; wait $SP 2>/dev/null
 if [ "$c1" = 200 ] && [ "$c2" = 200 ]; then ok "server khởi động, phục vụ / và engine"; else bad "server smoke test (/=$c1 engine=$c2)"; cat "$DD/server.log"; fi
 
+# 7. Golden-frame render: so khớp ảnh, tất định, hiệu năng (scripts/golden.js tự in PASS/FAIL/WARN)
+if [ -n "${SKIP_GOLDEN:-}" ]; then
+  if [ -n "${CI:-}" ]; then bad "SKIP_GOLDEN không được phép trên CI"; else warn "bỏ qua golden-frame (SKIP_GOLDEN=1)"; fi
+else
+  node scripts/golden.js; gc=$?
+  [ $gc = 0 ] || { fail=1; echo "FAIL  golden-frame (exit $gc) — ảnh diff ở test/golden/out/; thay đổi hình có chủ đích: node scripts/golden.js --update"; }
+fi
+
 [ $fail = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
 exit $fail

@@ -17,7 +17,7 @@ jobs:
   quality-gate:
     name: quality-gate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,8 +26,18 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # npm cache (setup-node) also covers @sparticuz/chromium, the pinned
+      # Chromium binary that golden-frame tests render with (scripts/golden.js)
       - run: npm ci --no-audit --no-fund
       - name: Quality gate
         env:
           BASE: origin/${{ github.base_ref || 'main' }}
         run: npm run check
+      - name: Upload golden-frame diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-diff
+          path: test/golden/out/
+          if-no-files-found: ignore
+          retention-days: 7

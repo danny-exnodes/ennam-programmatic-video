@@ -1,0 +1,57 @@
+{
+  "id": "gpost",
+  "name": "Golden · hậu kỳ (grade, bloom, vignette, grain, letterbox, chuyển cảnh)",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "style": {
+    "grade": "cinematic",
+    "vignette": 0.5,
+    "grain": 0.08,
+    "bloom": 0.6,
+    "letterbox": 0.1,
+    "palette": {
+      "primary": "#f08a12",
+      "accent": "#f5b54a",
+      "text": "#ffffff"
+    }
+  },
+  "assets": [],
+  "voice": [],
+  "music": null,
+  "exports": [],
+  "shots": [
+    {
+      "id": "gpost0",
+      "transition": {
+        "type": "cut"
+      },
+      "name": "Đèn",
+      "duration": 1.5,
+      "code": "const { W, H } = s;\ns.background(['#1b2a3a', '#3a1f14']);\ns.fx.bokeh({ count: 18, size: [30, 90], color: '#ffd9a0', opacity: 0.5 });\ns.fx.rays({ x: W * 0.2, y: -40, angle: 0.5, count: 5, length: 1400, color: '#fff1d0', opacity: 0.35 });\ns.icon('sun', { x: W * 0.5, y: H * 0.45, size: 260, color: '#fff4dc' });\ns.fx.flare({ x: W * 0.5, y: H * 0.45, intensity: 0.8 });"
+    },
+    {
+      "id": "gpost1",
+      "transition": {
+        "type": "dissolve",
+        "duration": 0.5
+      },
+      "name": "CTA",
+      "duration": 1.5,
+      "code": "const { W, H } = s;\ns.background({ radial: ['#f5b54a', '#2a1406'], x: W / 2, y: H / 2, r: W * 0.7 });\ns.text('Mua ngay', { x: W / 2, y: H * 0.55, size: 140, weight: 800, align: 'center', anim: 'pop', start: 0 });"
+    }
+  ],
+  "golden": {
+    "frames": [
+      {
+        "t": 0.7
+      },
+      {
+        "t": 1.7
+      },
+      {
+        "t": 2.6
+      }
+    ]
+  }
+}
