@@ -103,6 +103,12 @@ label { display: block; color: var(--muted); font-size: 12px; margin: 12px 0 6px
 .bar > div { height: 100%; background: var(--blue); transition: width 0.3s; }
 .job .log { color: var(--muted); font-size: 11px; margin-top: 6px; max-height: 120px; overflow: auto; white-space: pre-wrap; }
 details summary { cursor: pointer; padding: 8px 0; font-size: 14px; }
+details.brief { border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 12px 12px; margin-top: 12px; background: var(--bg3); }
+details.brief summary { font-size: 13px; font-weight: 600; }
+details.brief:not([open]) { padding-bottom: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip { padding: 4px 10px; border-radius: 999px; font-size: 12px; background: var(--bg); color: var(--muted); }
+.chip.on { background: var(--blue); border-color: var(--blue); color: #fff; }
 .sb-shot { display: grid; grid-template-columns: 80px 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; }
 .sb-shot canvas { width: 80px; height: 45px; border-radius: 4px; background: #000; }
 .sb-shot .n { font-weight: 600; }

@@ -76,7 +76,12 @@ app.put('/api/projects/:id', wrap(async (req, res) => {
   const next = { ...cur, ...body, id: cur.id, assets: body.assets ?? cur.assets, exports: cur.exports, createdAt: cur.createdAt };
   validateProject(next);
   store.clearStaleReview(cur.shots, next.shots); // editing a flagged shot's code clears needsReview
-  await store.saveProject(next, { snapshot: req.query.snapshot === '1', reason: req.query.reason || 'save' });
+  let snapshot = req.query.snapshot === '1', reason = req.query.reason || 'save';
+  // brief edits get a "brief" snapshot (state before the edit), one per editing session
+  if (!snapshot && !store.briefEqual(cur.brief, next.brief) && await store.shouldSnapshotBrief(cur.id)) {
+    snapshot = true; reason = 'brief';
+  }
+  await store.saveProject(next, { snapshot, reason });
   res.json(next);
 }));
 
@@ -208,10 +213,18 @@ app.post('/api/projects/:id/voice/:lineId/tts', wrap(async (req, res) => {
 
 // --- AI director ---
 // Jobs store kind + params only; the project is (re)read when the job starts (server/job-kinds.js).
+// `brief`: structured object (saved into project.brief first, with a "brief" snapshot when it
+// changed) or a plain string (legacy: the edit request). `request`: free-text edit request.
 app.post('/api/projects/:id/director', wrap(async (req, res) => {
   const p = await store.loadProject(req.params.id);
-  const { brief = '', shotId = null, review = true } = req.body || {};
-  res.json(publicJob(createJob('director', p.id, { brief, shotId, review })));
+  const { brief = '', request, shotId = null, review = true } = req.body || {};
+  let ask = typeof request === 'string' ? request : '';
+  if (typeof brief === 'string') ask = ask || brief;
+  else if (brief && typeof brief === 'object' && !store.briefEqual(brief, p.brief)) {
+    p.brief = store.normalizeBrief(brief);
+    await store.saveProject(p, { snapshot: true, reason: 'brief' });
+  }
+  res.json(publicJob(createJob('director', p.id, { request: ask, shotId, review })));
 }));
 
 // --- render ---
