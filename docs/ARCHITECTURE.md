@@ -40,7 +40,7 @@ Trình duyệt (editor)                Server Node (Express)                 Chr
 
 - `store.js` — mỗi dự án là một thư mục `data/projects/<id>/` gồm `project.json`, `assets/`, `exports/`, `history/` (snapshot trước mỗi thay đổi lớn).
 - `render.js` — mở N trang Chromium (CPU raster), gọi `window.__frame(t, samples)`, nhận JPEG, sắp xếp lại thứ tự, đẩy vào ffmpeg (x264), sau đó trộn nhạc (fade, offset) + lồng tiếng (adelay) và mux.
-- `director.js` — Claude nhận: tài liệu SHOT API + ví dụ, ảnh chất liệu (vision), JSON dự án, nhiệm vụ. Trả kết quả qua tool có schema (`submit_cut` / `submit_shot`). Sau đó: kiểm tra cú pháp → render thử headless → phản hồi lỗi / contact sheet → sửa.
+- `director.js` — Claude nhận: tài liệu SHOT API + ví dụ, ảnh chất liệu (vision), JSON dự án, nhiệm vụ. Trả kết quả qua tool có schema (`submit_cut` / `submit_shot`). Sau đó: kiểm tra cú pháp → render thử headless → phản hồi lỗi / contact sheet → sửa. Prompt caching: breakpoint `cache_control` ở khối system và khối cuối của user turn mở đầu (thứ tự khối cố định) nên các vòng sửa đọc lại prefix từ cache; token mỗi lượt ghi vào log job và `project.lastDirector.usage`.
 - `templates.js` — cảnh mẫu & công thức (cũng là ví dụ few-shot cho đạo diễn).
 - `jobs.js` — hàng đợi job; render chạy tuần tự, đạo diễn chạy song song.
 

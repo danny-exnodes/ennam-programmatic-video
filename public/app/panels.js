@@ -80,6 +80,7 @@ function director() {
     h('p', { class: 'small muted' }, state.config.director
       ? `Đạo diễn: ${state.config.model}. Đạo diễn xem ảnh chất liệu, viết code từng shot, render thử, tự duyệt contact sheet rồi sửa.`
       : 'Server chưa có ANTHROPIC_API_KEY — dùng tab Nhanh / Mẫu cảnh, hoặc sửa code shot trực tiếp.'),
+    usageLine(p.lastDirector?.usage),
     jobsBox(),
     h('div', { class: 'row' },
       h('button', { onclick: contactSheet }, '🗂 Contact sheet'),
@@ -91,6 +92,16 @@ function director() {
       h('a', { href: exportUrl(p, e.file, true), title: 'Tải về' }, h('button', { class: 'icon' }, '⬇'))))),
     storyboard(),
   );
+}
+
+// Tóm tắt token của lần chạy đạo diễn gần nhất (project.lastDirector.usage).
+function usageLine(u) {
+  const t = u?.total;
+  if (!t) return null;
+  const n = (k) => (Number(t[k]) || 0).toLocaleString('vi-VN');
+  const rounds = (u.rounds || []).length;
+  return h('p', { class: 'small muted', title: 'Token của lần chạy đạo diễn gần nhất' },
+    `Token lần trước${rounds ? ` (${rounds} lượt)` : ''}: vào ${n('input_tokens')} · ra ${n('output_tokens')} · đọc cache ${n('cache_read_input_tokens')} · ghi cache ${n('cache_creation_input_tokens')}`);
 }
 
 function jobsBox() {
