@@ -27,11 +27,10 @@
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
-import net from 'node:net';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
+import { pinnedChrome as pinnedChromeBase, usePinnedChrome, startTempServer } from './lib/test-env.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const GDIR = path.join(ROOT, 'test/golden');
@@ -56,26 +55,8 @@ const bad = (m) => { console.log(`FAIL  ${m}`); failed = true; if (GH) console.l
 const warn = (m) => { console.log(`WARN  ${m}`); if (GH) console.log(`::warning::${m}`); };
 const info = (m) => console.log(`      ${m}`);
 
-// ---------- pinned Chromium ----------
-async function pinnedChrome() {
-  if (process.env.CHROME_PATH) {
-    warn(`dùng CHROME_PATH=${process.env.CHROME_PATH} thay cho @sparticuz/chromium — golden có thể lệch nếu khác phiên bản`);
-    return process.env.CHROME_PATH;
-  }
-  if (process.platform !== 'linux' || process.arch !== 'x64') return null;
-  const chromium = (await import('@sparticuz/chromium')).default;
-  const exe = await chromium.executablePath();
-  // fonts.conf bundled with the package → identical fallback fonts on every machine
-  process.env.FONTCONFIG_PATH ??= path.join(os.tmpdir(), 'fonts');
-  return exe;
-}
-
-const freePort = () => new Promise((res, rej) => {
-  const s = net.createServer();
-  s.unref();
-  s.on('error', rej);
-  s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => res(port)); });
-});
+// ---------- pinned Chromium (scripts/lib/test-env.js) ----------
+const pinnedChrome = () => pinnedChromeBase({ onWarn: (m) => warn(m.replace('kết quả có thể lệch', 'golden có thể lệch')) });
 
 async function decode(buf) {
   const { data, info: i } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -117,9 +98,7 @@ async function main() {
     warn(m + ' (đặt CHROME_PATH để chạy thử, kết quả có thể lệch)');
     return 0;
   }
-  process.env.CHROME_PATH = exe;
-  // hinting from the system fontconfig would leak into text rasterisation
-  process.env.CHROME_ARGS = [process.env.CHROME_ARGS, '--font-render-hinting=none'].filter(Boolean).join(' ');
+  usePinnedChrome(exe);
 
   // ---------- fixtures → temp DATA_DIR ----------
   const fixtures = fs.readdirSync(FIX).filter((f) => f.endsWith('.json')).sort()
@@ -135,25 +114,12 @@ async function main() {
   }
 
   // ---------- temporary server ----------
-  const port = await freePort();
-  process.env.PORT = String(port);
-  const logFile = path.join(DD, 'server.log');
-  const log = fs.openSync(logFile, 'w');
-  const srv = spawn(process.execPath, [path.join(ROOT, 'server/index.js')], {
-    env: { ...process.env, PORT: String(port), DATA_DIR: DD, APP_PASSWORD: '' },
-    stdio: ['ignore', log, log],
-  });
-  const stopServer = () => { if (srv.exitCode === null) srv.kill('SIGTERM'); };
-  process.on('exit', stopServer);
-  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stopServer(); process.exit(2); });
+  const srv = await startTempServer(DD);
+  const stopServer = () => srv.stop?.();
 
   let browser = null;
   try {
-    let up = false;
-    for (let i = 0; i < 60 && !up; i++) {
-      try { up = (await fetch(`http://127.0.0.1:${port}/engine/engine.js`)).ok; } catch { await new Promise((r) => setTimeout(r, 250)); }
-    }
-    if (!up) { bad('server tạm không khởi động'); console.log(fs.readFileSync(logFile, 'utf8')); return 2; }
+    if (srv.error) { bad(srv.error); console.log(srv.log()); return 2; }
 
     const { openRenderPage, getBrowser } = await import('../server/render.js');
     browser = await getBrowser();
@@ -315,7 +281,6 @@ async function main() {
   } finally {
     if (browser) await browser.close().catch(() => {});
     stopServer();
-    fs.closeSync(log);
     await fsp.rm(DD, { recursive: true, force: true }).catch(() => {});
   }
 }

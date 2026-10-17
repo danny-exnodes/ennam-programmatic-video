@@ -70,7 +70,11 @@ export function renderInspector() {
     clearTimeout(codeTimer);
     codeTimer = setTimeout(() => {
       if (lintShotCode(code.value)) return showErr();
-      update(() => { sh.code = code.value; }, { structural: false });
+      update(() => {
+        // editing the code clears the director's needsReview flag (server does the same on save)
+        if (sh.code !== code.value && sh.needsReview) { delete sh.needsReview; reviewBox.remove(); }
+        sh.code = code.value;
+      }, { structural: false });
       renderFields(fieldsBox, p, sh); // declarations come from code
       setTimeout(showErr, 80);
     }, 450);
@@ -84,6 +88,9 @@ export function renderInspector() {
     e.stopPropagation();
   });
   setTimeout(showErr, 120);
+  const reviewBox = sh.needsReview
+    ? h('div', { class: 'err review-note', title: sh.needsReview.at || '' }, '⚠ Cần xem lại: ', sh.needsReview.reason, ' Sửa code để bỏ cờ.')
+    : h('div');
 
   root.replaceChildren(...[
     h('div', { class: 'insp-title' }, `SHOT ${idx + 1} · ${it.start.toFixed(1)}–${it.end.toFixed(1)}s`),
@@ -94,6 +101,7 @@ export function renderInspector() {
     h('div', { class: 'row', style: { marginTop: '8px' } },
       h('button', { class: 'primary shrink', onclick: apply }, 'Áp dụng'),
       h('div', { class: 'row' }, h('span', { class: 'small muted shrink' }, 'dài'), tdur)),
+    reviewBox,
     sh.notes ? h('div', { class: 'notes' }, '🎬 ', sh.notes) : null,
     fieldsBox,
     h('label', {}, 'Nội dung chuyển động trong shot là code — nhờ đạo diễn:'),

@@ -134,6 +134,9 @@ details summary { cursor: pointer; padding: 8px 0; font-size: 14px; }
 .clip.shot { background: var(--blue2); border: 1.5px solid #5079ff; }
 .clip.shot.sel { border-color: #fff; box-shadow: 0 0 0 1px #fff inset; }
 .clip.shot .tr { position: absolute; left: 3px; top: 2px; font-size: 9px; opacity: 0.8; }
+.clip.shot.review { border-color: #ffb020; background: linear-gradient(90deg, rgba(255,176,32,0.28), var(--blue2) 60%); }
+.clip.shot .nr-badge { flex: none; margin-right: 6px; padding: 1px 6px; border-radius: 4px; background: #ffb020; color: #1a1200; font-size: 10px; font-weight: 700; }
+.review-note { color: #ffd27a; background: rgba(255,176,32,0.10); border-color: rgba(255,176,32,0.45); font-family: inherit; font-size: 12px; }
 .clip.shot .handle { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: ew-resize; background: rgba(255,255,255,0.12); }
 .clip.voice { background: var(--green); border: 1px solid #45b06a; }
 .clip.voice.noaudio { background: #24402f; border-style: dashed; }

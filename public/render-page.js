@@ -29,7 +29,29 @@ async function frame(t, mb = 1, fmt = 'jpeg') {
 }
 window.__frame = frame;
 
-// Contact sheet + runtime errors for the AI director's self-review.
+// Pixel statistics of a canvas (pre-post shot buffer), sampled on a 2px grid.
+// Luma 0..255 (Rec. 601). bright = share of pixels with luma > 20 (near-black detection).
+function lumaStats(cv) {
+  const w = cv.width, h = cv.height;
+  const d = cv.getContext('2d').getImageData(0, 0, w, h).data;
+  let n = 0, sum = 0, sq = 0, bright = 0;
+  for (let y = 0; y < h; y += 2) {
+    for (let x = 0; x < w; x += 2) {
+      const o = (y * w + x) * 4;
+      const l = 0.299 * d[o] + 0.587 * d[o + 1] + 0.114 * d[o + 2];
+      sum += l; sq += l * l; n++;
+      if (l > 20) bright++;
+    }
+  }
+  const mean = sum / Math.max(1, n);
+  return { mean, std: Math.sqrt(Math.max(0, sq / Math.max(1, n) - mean * mean)), bright: bright / Math.max(1, n) };
+}
+
+// Contact sheet + runtime errors + per-shot QA metrics for the AI director's self-review.
+// metrics[shotId] = { samples: [{ t, mean, std, bright, ms, text: [{x,y,w,h,text}] }] }
+// (pixel stats are taken before post — grade/vignette/grain would hide a flat frame).
+// ms/frame needs a clock injected by the caller (window.__profNow, see server/render.js);
+// this page and the engine never read a real clock themselves → ms is null without it.
 window.__inspect = async (n = 3, tw = 480) => {
   const p = engine.project;
   const th = Math.round((tw * p.height) / p.width);
@@ -43,22 +65,36 @@ window.__inspect = async (n = 3, tw = 480) => {
   const tmp = document.createElement('canvas');
   tmp.width = canvas.width; tmp.height = canvas.height;
   const tc = tmp.getContext('2d');
+  const clock = typeof window.__profNow === 'function' ? window.__profNow : null;
   engine.errors.clear();
   engine._warned = new Set();
-  for (let i = 0; i < p.shots.length; i++) {
-    const sh = p.shots[i];
-    for (let j = 0; j < n; j++) {
-      const lt = (sh.duration * (j + 0.5)) / n;
-      engine.renderShotFrame(tc, i, lt);
-      sc.drawImage(tmp, j * tw, i * (th + labelH) + labelH, tw, th);
-      sc.fillStyle = '#ddd';
-      sc.font = '600 18px "Be Vietnam Pro", sans-serif';
-      sc.fillText(`Shot ${i + 1} · ${sh.name} · t=${lt.toFixed(1)}s`, j * tw + 8, i * (th + labelH) + 23);
+  const metrics = {};
+  try {
+    for (let i = 0; i < p.shots.length; i++) {
+      const sh = p.shots[i];
+      const samples = [];
+      for (let j = 0; j < n; j++) {
+        const lt = (sh.duration * (j + 0.5)) / n;
+        engine.textProbe = [];
+        const t0 = clock ? clock() : 0;
+        engine.renderShotFrame(tc, i, lt);
+        tc.getImageData(0, 0, 1, 1); // flush raster work before stopping the clock
+        const ms = clock ? clock() - t0 : null;
+        samples.push({ t: lt, ...lumaStats(engine.frameBuf), ms, text: engine.textProbe });
+        engine.textProbe = null;
+        sc.drawImage(tmp, j * tw, i * (th + labelH) + labelH, tw, th);
+        sc.fillStyle = '#ddd';
+        sc.font = '600 18px "Be Vietnam Pro", sans-serif';
+        sc.fillText(`Shot ${i + 1} · ${sh.name} · t=${lt.toFixed(1)}s`, j * tw + 8, i * (th + labelH) + 23);
+      }
+      metrics[sh.id] = { samples };
     }
+  } finally {
+    engine.textProbe = null;
   }
   const errors = {};
   for (const [k, v] of engine.errors) errors[k] = v;
-  return { errors, sheet: sheet.toDataURL('image/jpeg', 0.82).split(',')[1] };
+  return { errors, metrics, width: p.width, height: p.height, sheet: sheet.toDataURL('image/jpeg', 0.82).split(',')[1] };
 };
 
 if (!qs.get('override')) {

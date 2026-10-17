@@ -27,13 +27,15 @@ export function renderTimeline() {
   const tr = $('trackShots');
   tr.replaceChildren();
   shotStarts().forEach((it, i) => {
+    const nr = it.shot.needsReview;
     const c = h('div', {
       'data-id': it.shot.id,
-      class: 'clip shot' + (it.shot.id === state.selectedShot ? ' sel' : ''),
+      class: 'clip shot' + (it.shot.id === state.selectedShot ? ' sel' : '') + (nr ? ' review' : ''),
       style: { left: x(it.start) + 'px', width: Math.max(8, it.shot.duration * pps - 3) + 'px' },
-      title: `${it.shot.name} · ${it.shot.duration.toFixed(1)}s · vào: ${it.shot.transition?.type || 'cut'}`,
+      title: `${it.shot.name} · ${it.shot.duration.toFixed(1)}s · vào: ${it.shot.transition?.type || 'cut'}${nr ? `\n⚠ Cần xem lại: ${nr.reason}` : ''}`,
     },
     it.shot.transition && it.shot.transition.type !== 'cut' ? h('span', { class: 'tr' }, '⤳') : null,
+    nr ? h('span', { class: 'nr-badge', title: nr.reason }, '⚠ Cần xem lại') : null,
     h('span', { class: 'ph' }, `${i + 1} · ${it.shot.name}`),
     h('div', { class: 'handle' }));
     c.addEventListener('pointerdown', (e) => shotPointer(e, it, i, c));

@@ -56,6 +56,9 @@ export class Engine {
     this.layerPool = [];
     this.videoRequests = [];
     this.fieldDecls = new Map(); // shotId -> Map(key -> declaration), see field()/fieldsOf()
+    // QA hook (internal, not part of the shot API): when set to an array, every s.text call
+    // appends its laid-out block rect in project pixels. Read-only on the canvas → pixels unchanged.
+    this.textProbe = null;
   }
 
   setProject(project) {
@@ -237,7 +240,11 @@ export class Engine {
         applyCam(s.ctx, depth);
         try { fn(s.ctx); } finally { s.ctx.restore(); }
       },
-      text: (str, o = {}) => withDepth(o.depth ?? 0, () => text(s.ctx, localT, str, { color: palette.text, accent: palette.accent, ...o })),
+      text: (str, o = {}) => withDepth(o.depth ?? 0, () => {
+        const r = text(s.ctx, localT, str, { color: palette.text, accent: palette.accent, ...o });
+        if (eng.textProbe) eng.probeText(s.ctx, str, o, r);
+        return r;
+      }),
       underline: (o = {}) => withDepth(o.depth ?? 0, () => underline(s.ctx, localT, { color: palette.primary, ...o })),
       badge: (o = {}) => withDepth(o.depth ?? 0, () => badge(s.ctx, localT, { ring: palette.accent, ...o })),
       icon: (name, o = {}) => withDepth(o.depth ?? 0, () => icon(s.ctx, name, o)),
@@ -298,6 +305,27 @@ export class Engine {
       leak: fxWrap(A.lightLeak, 0),
     });
     return s;
+  }
+
+  /**
+   * QA hook: record the block rect of one s.text call (project pixels, after the current
+   * transform — camera depth, layers). Vertical extent covers Vietnamese stacked marks and
+   * descenders of every line. Pure function of layout → deterministic.
+   */
+  probeText(ctx, str, o, r) {
+    if (!r || !r.words) return;
+    const x = o.x ?? 0, y = o.y ?? 0, align = o.align ?? 'left';
+    const left = align === 'center' ? x - r.width / 2 : align === 'right' ? x - r.width : x;
+    const lh = r.height / Math.max(1, r.lines);
+    const top = y - r.size * 1.05, bottom = y + (r.lines - 1) * lh + r.size * 0.3;
+    const m = ctx.getTransform();
+    const k = 1 / this.scale;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [px, py] of [[left, top], [left + r.width, top], [left, bottom], [left + r.width, bottom]]) {
+      const X = (m.a * px + m.c * py + m.e) * k, Y = (m.b * px + m.d * py + m.f) * k;
+      x0 = Math.min(x0, X); y0 = Math.min(y0, Y); x1 = Math.max(x1, X); y1 = Math.max(y1, Y);
+    }
+    this.textProbe.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0, text: String(str).replace(/\*/g, '').slice(0, 40) });
   }
 
   /** Record a field declaration for shot `sh` and return its current value. */
