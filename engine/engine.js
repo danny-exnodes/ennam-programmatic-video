@@ -55,6 +55,7 @@ export class Engine {
     this.errors = new Map();
     this.layerPool = [];
     this.videoRequests = [];
+    this.fieldDecls = new Map(); // shotId -> Map(key -> declaration), see field()/fieldsOf()
   }
 
   setProject(project) {
@@ -65,6 +66,7 @@ export class Engine {
     this.resize();
     for (const sh of project.shots) {
       if (prevCodes.get(sh.id) !== sh.code || !this.compiled.has(sh.id)) {
+        this.fieldDecls.delete(sh.id); // declarations come from code: recollect
         try {
           this.compiled.set(sh.id, compileShot(sh.code));
           this.errors.delete(sh.id);
@@ -148,6 +150,13 @@ export class Engine {
       spring: (o = {}) => M.spring(localT - (o.delay ?? 0), o),
       asset: getAsset,
       has: (name) => eng.assets.has(name),
+      /**
+       * Editable value of this shot (Inspector form). Returns shot.fields[key] ?? def.
+       * Pure: never depends on t. Declarations are recorded for fieldsOf().
+       */
+      field(key, def, o = {}) {
+        return eng.readField(sh, key, def, o);
+      },
       // camera: call before drawing; values persist for the rest of the frame
       camera(o = {}) {
         if (o.zoom != null) cam.zoom = o.zoom;
@@ -289,6 +298,49 @@ export class Engine {
       leak: fxWrap(A.lightLeak, 0),
     });
     return s;
+  }
+
+  /** Record a field declaration for shot `sh` and return its current value. */
+  readField(sh, key, def, o = {}) {
+    key = String(key ?? '');
+    if (!key) return def;
+    const type = FIELD_TYPES.includes(o.type) ? o.type : typeof def === 'number' ? 'number' : 'text';
+    let decls = this.fieldDecls.get(sh.id);
+    if (!decls) { decls = new Map(); this.fieldDecls.set(sh.id, decls); }
+    if (!decls.has(key)) {
+      const d = { key, type, label: o.label != null ? String(o.label) : key, default: def };
+      if (o.maxLength != null) d.maxLength = Number(o.maxLength);
+      decls.set(key, d);
+    }
+    return fieldValue(sh.fields?.[key], def, type, o.maxLength);
+  }
+
+  /**
+   * Declared fields of a shot, in declaration order: [{ key, type, label, default, maxLength? }].
+   * If the shot has not run since its code last changed, runs a declaration pass first
+   * (the shot executed once at t=0 into a scratch buffer; output discarded, no warnings).
+   * Fields declared only inside time-dependent branches appear once a frame reaches them.
+   */
+  fieldsOf(shotId) {
+    if (!this.fieldDecls.has(shotId)) this.collectFields(shotId);
+    return [...(this.fieldDecls.get(shotId)?.values() || [])].map((d) => ({ ...d }));
+  }
+
+  /** Declaration pass for one shot (or all shots when shotId is omitted). */
+  collectFields(shotId) {
+    if (!this.project) return;
+    const items = this.timeline.filter((it) => shotId == null || it.shot.id === shotId);
+    const saved = { warn: this.warn, videoRequests: this.videoRequests };
+    this.warn = () => {};
+    try {
+      for (const it of items) {
+        this.fieldDecls.set(it.shot.id, new Map());
+        this.renderShot(this.bufA.getContext('2d'), it, 0, 0);
+      }
+    } finally {
+      this.warn = saved.warn;
+      this.videoRequests = saved.videoRequests;
+    }
   }
 
   warn(shotId, msg) {
@@ -436,6 +488,20 @@ export class Engine {
     clearFoliageCache();
     clearDewCache();
   }
+}
+
+export const FIELD_TYPES = ['text', 'color', 'number', 'image'];
+
+/** Resolve a stored field value against its default (pure). Image values are asset names. */
+function fieldValue(v, def, type, maxLength) {
+  if (v == null) return def;
+  if (type === 'number') {
+    const n = typeof v === 'number' ? v : v === '' ? NaN : Number(v);
+    return Number.isFinite(n) ? n : def;
+  }
+  v = String(v);
+  if (type === 'text' && maxLength > 0 && v.length > maxLength) v = v.slice(0, maxLength);
+  return v;
 }
 
 function resolveAssetRefs(o, getAsset) {

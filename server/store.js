@@ -49,6 +49,24 @@ export function defaultProject(o = {}) {
   };
 }
 
+/**
+ * Editable shot values (`s.field(key, default)` in shot code) live in `shot.fields`:
+ * a flat { key: string | number } object, default {}. Non-primitive values are dropped.
+ */
+export function normalizeFields(fields) {
+  const out = {};
+  if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return out;
+  for (const [k, v] of Object.entries(fields)) {
+    if (k && (typeof v === 'string' || (typeof v === 'number' && Number.isFinite(v)))) out[k] = v;
+  }
+  return out;
+}
+
+export function normalizeProject(p) {
+  if (Array.isArray(p?.shots)) for (const s of p.shots) if (s && typeof s === 'object') s.fields = normalizeFields(s.fields);
+  return p;
+}
+
 export async function listProjects() {
   await fs.mkdir(PROJ, { recursive: true });
   const ids = await fs.readdir(PROJ);
@@ -69,7 +87,7 @@ export async function listProjects() {
 export async function loadProject(id) {
   const f = path.join(projectDir(id), 'project.json');
   try {
-    return JSON.parse(await fs.readFile(f, 'utf8'));
+    return normalizeProject(JSON.parse(await fs.readFile(f, 'utf8')));
   } catch {
     throw Object.assign(new Error('Không tìm thấy dự án'), { status: 404 });
   }
@@ -88,6 +106,7 @@ export async function saveProject(p, { snapshot = false, reason = '' } = {}) {
       await fs.rm(path.join(projectDir(p.id), 'history', old)).catch(() => {});
     }
   }
+  normalizeProject(p);
   p.updatedAt = new Date().toISOString();
   const tmp = f + '.tmp';
   await fs.writeFile(tmp, JSON.stringify(p, null, 2));
@@ -110,7 +129,7 @@ export async function listHistory(id) {
 
 export async function loadHistory(id, file) {
   if (!/^[\w.-]+\.json$/.test(file)) throw Object.assign(new Error('bad file'), { status: 400 });
-  return JSON.parse(await fs.readFile(path.join(projectDir(id), 'history', file), 'utf8'));
+  return normalizeProject(JSON.parse(await fs.readFile(path.join(projectDir(id), 'history', file), 'utf8')));
 }
 
 export async function deleteProject(id) {
