@@ -6,6 +6,7 @@
 // Condensation drops are added on top (2D lens drops from dew.js).
 import { getPass, GLSL_NOISE, hex3, makeCanvas } from './glkit.js';
 import { rng, rgba, mix } from '../math.js';
+import { drawLensDrop } from './dew.js';
 
 const FS = `#version 300 es
 precision highp float;
@@ -236,3 +237,73 @@ export function condensation(o = {}) {
 }
 
 export { mix };
+
+/**
+ * Composite the bottle onto ctx: contact shadow, the GL bottle refracting what is
+ * already drawn (ctx content), then condensation lens drops (some running down).
+ * geo: { base:[x,y], top:[x,y], rBase, rTop } in output px at scale 1.
+ * env: { time, sun:{color,intensity,screenDir}, scale, pw, ph, snap: scratch canvas pw×ph }
+ */
+export function compositeBottle(ctx, geo, b, env) {
+  const { time, sun, scale, pw, ph } = env;
+  const pb = geo.base;
+  const lx = sun.screenDir.x;
+  // contact shadow + focused caustic light on the surface behind/beside the bottle
+  ctx.save();
+  const sh = ctx.createRadialGradient(pb[0] - lx * geo.rBase * 1.2, pb[1], 0, pb[0] - lx * geo.rBase * 1.2, pb[1], geo.rBase * 2.6);
+  sh.addColorStop(0, 'rgba(0,0,0,0.28)');
+  sh.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = sh;
+  ctx.beginPath();
+  ctx.ellipse(pb[0] - lx * geo.rBase * 1.2, pb[1], geo.rBase * 2.2, geo.rBase * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const cg = ctx.createRadialGradient(pb[0] - lx * geo.rBase * 2.2, pb[1] + geo.rBase * 0.05, 0, pb[0] - lx * geo.rBase * 2.2, pb[1], geo.rBase * 1.1);
+  cg.addColorStop(0, 'rgba(255,250,225,0.22)');
+  cg.addColorStop(1, 'rgba(255,250,225,0)');
+  ctx.globalCompositeOperation = 'screen';
+  ctx.fillStyle = cg;
+  ctx.beginPath();
+  ctx.ellipse(pb[0] - lx * geo.rBase * 2.0, pb[1], geo.rBase * 0.8, geo.rBase * 0.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  const snap = env.snap;
+  const sx = snap.getContext('2d');
+  sx.setTransform(1, 0, 0, 1, 0, 0);
+  sx.clearRect(0, 0, pw, ph);
+  sx.drawImage(ctx.canvas, 0, 0);
+  let out;
+  try { out = renderBottleGL(geo, snap, scale, pw, ph, { ...b, time }, sun); } catch (e) { return; }
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (b.filter) ctx.filter = b.filter;
+  ctx.drawImage(out.canvas, out.box[0], out.box[1]);
+  ctx.filter = 'none';
+  ctx.restore();
+  // condensation drops (and a few running down)
+  const drops = condensation({ seed: b.seed ?? 21, count: b.drops ?? 70 });
+  const light = sun.screenDir;
+  const prof = (v) => (v < 0.56 ? 1 : v < 0.79 ? 1 - 0.58 * (0.5 - 0.5 * Math.cos(Math.PI * (v - 0.56) / 0.23)) : 0.42);
+  for (const d of drops) {
+    let v = d.v;
+    if (d.run >= 0 && time > d.run) v = Math.max(0.03, v - (time - d.run) * 0.035);
+    const cx = geo.base[0] + (geo.top[0] - geo.base[0]) * v;
+    const cy = geo.base[1] + (geo.top[1] - geo.base[1]) * v;
+    const rpx = geo.rBase + (geo.rTop - geo.rBase) * v;
+    const R = prof(v);
+    const x = cx + d.u * R * rpx;
+    const rr = d.r * rpx;
+    const fs = Math.sqrt(Math.max(0.05, 1 - d.u * d.u));
+    if (d.run >= 0 && time > d.run) {
+      // the clear trail a running drop leaves in the frost
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = rr * fs * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(x, cy);
+      ctx.lineTo(x, geo.base[1] + (geo.top[1] - geo.base[1]) * d.v);
+      ctx.stroke();
+      ctx.restore();
+    }
+    drawLensDrop(ctx, snap, scale, x, cy, rr * fs, rr * 1.05, { light, mode: 'ball', fov: 4, lookUp: 0.5, rim: 0.8 });
+  }
+}

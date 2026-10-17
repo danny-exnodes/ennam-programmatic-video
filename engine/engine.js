@@ -10,6 +10,7 @@ import { text, underline, badge, icon, ICON_NAMES, FONTS } from './fx/text.js';
 import { applyPost, GRADES } from './post.js';
 import { clearSimCache } from './fx/sim.js';
 import { natureScene } from './fx/nature.js';
+import { photoScene } from './fx/photo.js';
 import { clearWaterCache } from './fx/water.js';
 import { clearFoliageCache } from './fx/foliage.js';
 import { clearDewCache } from './fx/dew.js';
@@ -253,6 +254,8 @@ export class Engine {
       fx: {},
       /** 3D nature scene (water, wind, leaves, dew) — see SHOT_API "Thiên nhiên 3D". */
       nature: (o = {}) => natureScene(s, eng, o),
+      /** Real photo shot like live footage (2.5D camera, flowing water, sway, mist, DOF) — see SHOT_API "Ảnh thật". */
+      photo: (o = {}) => photoScene(s, eng, o),
       physics: {
         drop: (o = {}) => M.dropBounce(localT - (o.delay ?? 0), o),
         spring: (o = {}) => M.spring(localT - (o.delay ?? 0), o),

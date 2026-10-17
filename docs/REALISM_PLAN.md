@@ -43,6 +43,13 @@ Chi phí: ~1–1.8 s/mẫu ở 1080p trên 2 nhân CPU (nước tô ở 0.5–0.
 - **Âm thanh**: nhạc nền tổng hợp (`scripts/audio/tvc_music.py`), lồng tiếng Việt offline (Piper), mix có ducking (`build_tvc_audio.sh`).
 - **Thư viện chất liệu**: `library/sources.json` (giấy phép, được dùng quảng cáo hay không) + `scripts/library-import.js` tải từ Pexels/Pixabay/Openverse/Poly Haven kèm file thông tin giấy phép.
 
+## 2c. Đợt 3 — ảnh thật "như quay thật"
+
+- `s.photo()` (`fx/photogl.js`, `fx/photo.js`): ảnh chụp thật + bản đồ độ sâu (Depth Anything V2, ONNX) → camera 2.5D có thị sai, nước chảy bằng flow-map hai pha, cây lá lay theo trường gió chung, sương trôi theo độ sâu, lấy nét theo độ sâu (rack focus), tia nắng, bloom, chỉnh màu; giọt nước thấu kính và chai sản phẩm đặt bám theo ảnh.
+- `scripts/photo/prep.py`: tạo depth/mask/flow từ ảnh + spec đa giác.
+- `sc.cutout()` / `sc.plate()` trong `s.nature`: ảnh thật làm cây cắt nền uốn theo gió hoặc phông xa được mặt nước phản chiếu.
+- Ví dụ: `examples/tvc-en-nam-real/`.
+
 ## 3. Lộ trình tiếp theo (đề xuất, theo thứ tự lợi ích/chi phí)
 
 1. **Nước gần camera bằng mô phỏng GPU** — chuyển mô phỏng trường độ cao lên shader (ping-pong texture) để tăng lưới lên 1024² và có thêm tương tác vật nổi ↔ sóng (lá bị sóng đẩy). Ước tính 2–3 ngày.

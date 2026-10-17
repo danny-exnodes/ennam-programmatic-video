@@ -19,7 +19,8 @@ import { simulateLeaves, sampleLeaf, leafFrame, drawLeaf3D, simulateReeds, drawR
 import { renderLeafGL } from './leafgl.js';
 import { renderLandscape, lightShafts } from './landscape.js';
 import { renderRocksGL } from './rockgl.js';
-import { renderBottleGL, condensation } from './bottle.js';
+import { renderCutouts } from './cutoutgl.js';
+import { compositeBottle } from './bottle.js';
 import { simulateDew, sampleDew, leafGeometry, drawHeroLeaf, drawTwig, drawLensDrop, pendantShape, DROP_STATE } from './dew.js';
 
 const canvases = new Map();
@@ -100,6 +101,7 @@ export function natureScene(s, eng, o = {}) {
   const heroes = [];
   const foregrounds = [];
   const rockList = [];
+  const cutoutList = [];
   const bottles = [];
   const birdSets = [];
   let waterOpts = null;
@@ -165,6 +167,20 @@ export function natureScene(s, eng, o = {}) {
     /** Out-of-focus foreground foliage framing the shot. {side:'left'|'right'|'top', depth, count, color, size} */
     foliage(opt = {}) {
       foregrounds.push({ kind: 'foliage', opt });
+      return sc;
+    },
+    /** Photo cut-out (PNG with transparency, e.g. a real tree) standing at world {x, z}: {image, height, y, crop, sway, stiffness, flutter, exposure, tint, saturation, rim, flip, reflect} */
+    cutout(opt = {}) {
+      const img = typeof opt.image === 'string' ? s.asset(opt.image) : opt.image;
+      if (!img) { eng.warn(s.shot.id, `Không tìm thấy chất liệu "${opt.image}"`); return sc; }
+      cutoutList.push({ ...opt, img });
+      return sc;
+    },
+    /** Photo/video plate as a billboard at depth z (real background): {image, z, height, x, y, crop, exposure, tint} */
+    plate(opt = {}) {
+      const img = typeof opt.image === 'string' ? s.asset(opt.image) : opt.image;
+      if (!img) { eng.warn(s.shot.id, `Không tìm thấy chất liệu "${opt.image}"`); return sc; }
+      cutoutList.push({ sway: 0, flutter: 0, rim: 0, ...opt, img, plate: true });
       return sc;
     },
     /** Hero product bottle standing at world {x, y, z}: {height, radius, cap, label:{...}, frost, drops, fill} */
@@ -253,6 +269,10 @@ export function natureScene(s, eng, o = {}) {
 
     tick('waterSim', T0); T0 = now();
     // ---- reflections of things above the water ----
+    if (cutoutList.length) {
+      const refl2 = cutoutList.filter((c) => c.reflect !== false);
+      try { if (refl2.length) rc.drawImage(renderCutouts(refl2, P, cam, sun, sky, wind, time, rw, rh, scale * rk, true, o.fog ?? 400), 0, 0, W, H); } catch (e) { eng.warn(s.shot.id, 'cutout: ' + e.message); }
+    }
     if (rockList.length) {
       try { rc.drawImage(renderRocksGL(rockList, P, cam, sun, sky, rw, rh, scale * rk, true), 0, 0, W, H); }
       catch { for (const r of rockList) drawRock(rc, PM, r, sun, true, time); }
@@ -294,6 +314,24 @@ export function natureScene(s, eng, o = {}) {
       let rcv = null;
       try { rcv = renderRocksGL(sorted, P, cam, sun, sky, pw, ph, scale, false); } catch { rcv = null; }
       blurDraw(ctx, scale, pw, ph, rb, (c) => { if (rcv) c.drawImage(rcv, 0, 0, W, H); else for (const r of sorted) drawRock(c, P, r, sun, false, time); }, 'rk');
+    }
+    // ---- photo cut-outs (real trees/plants) with depth of field buckets ----
+    if (cutoutList.length) {
+      const bk = new Map();
+      for (const c of cutoutList) {
+        const d = Math.max(0.1, P(c.x, (c.y ?? 0) + (c.height ?? 8) * 0.5, c.z)[2]);
+        const bl = (c.blur ?? 0) + cam.blurAt(d);
+        const key = bl < 1.2 ? 0 : Math.round(Math.log2(bl) * 2) / 2;
+        if (!bk.has(key)) bk.set(key, []);
+        c._d = d;
+        bk.get(key).push(c);
+      }
+      const meanD = (l) => l.reduce((a, c) => a + c._d, 0) / l.length;
+      for (const [key, list] of [...bk.entries()].sort((a, b) => meanD(b[1]) - meanD(a[1]))) {
+        let cv = null;
+        try { cv = renderCutouts(list, P, cam, sun, sky, wind, time, pw, ph, scale, false, o.fog ?? 400); } catch (e) { eng.warn(s.shot.id, 'cutout: ' + e.message); }
+        if (cv) blurDraw(ctx, scale, pw, ph, key === 0 ? 0 : Math.pow(2, key), (c) => c.drawImage(cv, 0, 0, W, H), 'co');
+      }
     }
     // ---- reeds (drawn after water so their bases sit in it) ----
     for (const rs of reedSets) {
@@ -381,63 +419,7 @@ export function natureScene(s, eng, o = {}) {
     const pb = P(b.x, b.y ?? 0, b.z), pt = P(b.x, (b.y ?? 0) + Hh, b.z);
     if (!(pb[2] > 0.02 && pt[2] > 0.02)) return;
     const geo = { base: [pb[0], pb[1]], top: [pt[0], pt[1]], rBase: Rr * cam.scaleAt(pb[2]), rTop: Rr * cam.scaleAt(pt[2]) };
-    const lx = sun.screenDir.x;
-    // contact shadow + focused caustic light on the surface behind/beside the bottle
-    ctx.save();
-    const sh = ctx.createRadialGradient(pb[0] - lx * geo.rBase * 1.2, pb[1], 0, pb[0] - lx * geo.rBase * 1.2, pb[1], geo.rBase * 2.6);
-    sh.addColorStop(0, 'rgba(0,0,0,0.28)');
-    sh.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = sh;
-    ctx.beginPath();
-    ctx.ellipse(pb[0] - lx * geo.rBase * 1.2, pb[1], geo.rBase * 2.2, geo.rBase * 0.32, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const cg = ctx.createRadialGradient(pb[0] - lx * geo.rBase * 2.2, pb[1] + geo.rBase * 0.05, 0, pb[0] - lx * geo.rBase * 2.2, pb[1], geo.rBase * 1.1);
-    cg.addColorStop(0, 'rgba(255,250,225,0.22)');
-    cg.addColorStop(1, 'rgba(255,250,225,0)');
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = cg;
-    ctx.beginPath();
-    ctx.ellipse(pb[0] - lx * geo.rBase * 2.0, pb[1], geo.rBase * 0.8, geo.rBase * 0.18, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    const snap = canvasFor('snapB', pw, ph);
-    const sx = snap.getContext('2d');
-    sx.setTransform(1, 0, 0, 1, 0, 0);
-    sx.clearRect(0, 0, pw, ph);
-    sx.drawImage(ctx.canvas, 0, 0);
-    let out;
-    try { out = renderBottleGL(geo, snap, scale, pw, ph, { ...b, time }, sun); } catch (e) { return; }
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(out.canvas, out.box[0], out.box[1]);
-    ctx.restore();
-    // condensation drops (and a few running down)
-    const drops = condensation({ seed: b.seed ?? 21, count: b.drops ?? 70 });
-    const light = sun.screenDir;
-    const prof = (v) => (v < 0.56 ? 1 : v < 0.79 ? 1 - 0.58 * (0.5 - 0.5 * Math.cos(Math.PI * (v - 0.56) / 0.23)) : 0.42);
-    for (const d of drops) {
-      let v = d.v;
-      if (d.run >= 0 && time > d.run) v = Math.max(0.03, v - (time - d.run) * 0.035);
-      const cx = geo.base[0] + (geo.top[0] - geo.base[0]) * v;
-      const cy = geo.base[1] + (geo.top[1] - geo.base[1]) * v;
-      const rpx = geo.rBase + (geo.rTop - geo.rBase) * v;
-      const R = prof(v);
-      const x = cx + d.u * R * rpx;
-      const rr = d.r * rpx;
-      const fs = Math.sqrt(Math.max(0.05, 1 - d.u * d.u));
-      if (d.run >= 0 && time > d.run) {
-        // the clear trail a running drop leaves in the frost
-        ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-        ctx.lineWidth = rr * fs * 1.2;
-        ctx.beginPath();
-        ctx.moveTo(x, cy);
-        ctx.lineTo(x, geo.base[1] + (geo.top[1] - geo.base[1]) * d.v);
-        ctx.stroke();
-        ctx.restore();
-      }
-      drawLensDrop(ctx, snap, scale, x, cy, rr * fs, rr * 1.05, { light, mode: 'ball', fov: 4, lookUp: 0.5, rim: 0.8 });
-    }
+    compositeBottle(ctx, geo, b, { time, sun, scale, pw, ph, snap: canvasFor('snapB', pw, ph) });
   }
 
   function drawForeground(ctx, f) {

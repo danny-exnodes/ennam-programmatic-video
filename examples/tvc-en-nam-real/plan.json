@@ -1,0 +1,17 @@
+{
+  "name": "TVC Én Nam 30s — ảnh thật",
+  "shots": [
+    ["s1-dai-ngan.js", "Đại ngàn trong sương", 5, "cut"],
+    ["s2-dong-song.js", "Dòng nước qua rừng", 5, "dissolve"],
+    ["s3-giot-suong.js", "Giọt sương", 4.5, "dissolve"],
+    ["s4-cham-mat-nuoc.js", "Chạm mặt nước", 4, "dissolve"],
+    ["s5-san-pham.js", "Én Nam bên thác", 7, "dissolve"],
+    ["s6-packshot.js", "Packshot", 4.5, "dissolve"]
+  ],
+  "style": { "grade": "none", "bloom": 0, "vignette": 0.28, "grain": 0.035 },
+  "voice": [
+    ["Giữa đại ngàn xanh thẳm,", 0.8], ["dòng nước trong lành được rừng núi chắt lọc qua bao tầng đá.", 5.6],
+    ["Từng giọt tinh khiết,", 10.6], ["giữ trọn sức sống của thiên nhiên.", 15.6],
+    ["Én Nam, nước khoáng thiên nhiên, tinh khiết từ đại ngàn.", 19.5], ["Én Nam. Trong lành mỗi ngày.", 26.1]
+  ]
+}

@@ -122,6 +122,31 @@ Không dùng `s.camera(...)` 2D cho cảnh nature; chuyển động camera đặ
 | `sc.rocks([...])` | Đá suối dạng lưới 3D (WebGL): `{x, z, r, h, color, mossColor, seed, wet}`. Nước tự tạo cổ bọt quanh đá, vệt xoáy & sóng chữ V phía hạ lưu theo `flow`; đá được phản chiếu |
 | `sc.foliage(o)` | Lá tiền cảnh mờ (bokeh) đung đưa theo gió, viền khung hình: `side:'left'|'right'|'top', depth (m), count, size, color, color2, reach, y, blur` |
 | `sc.swallows(o)` | Đàn chim én (đập cánh nhanh xen lượn): `count, from:[x,y,z], to:[x,y,z], start, dur, spread, size, color, seed` |
+| `sc.cutout(o)` | Ảnh cắt nền (PNG trong suốt: cây, bụi, đá thật) đặt thành tấm đứng tại `x, z` (m), uốn theo gió (gốc cứng, ngọn mềm, cơn giật tới theo mặt gió) và lá rung; có phản chiếu. `image` (tên chất liệu), `height`, `width`, `y`, `crop:[u0,v0,u1,v1]`, `sway`, `stiffness`, `flutter`, `exposure`, `tint`, `saturation`, `rim`, `flip`, `blur` |
+| `sc.plate(o)` | Ảnh/ video thật làm phông xa (như `cutout` nhưng không lay): `image, x, z, y, height, width, crop, exposure, saturation`. Mặt nước tự phản chiếu ảnh |
 | `sc.bottle(o)` | Chai nước PET trong suốt (WebGL): khúc xạ cảnh sau như thấu kính trụ, Fresnel, dải sáng, nhãn quấn trụ, nắp có gờ, màng hơi lạnh + giọt đọng (một số giọt chảy xuống để lại vệt). `x, y, z` (đáy chai, m), `height, radius, cap` (màu nắp), `fill` (mực nước 0..1), `frost`, `drops`, `tint`, `label:{name, subtitle, tagline, volume, color, color2}` hoặc `label:false` |
 
 Ví dụ hoàn chỉnh TVC 30 giây: `examples/tvc-en-nam/` (`npm run seed:tvc`).
+
+## Ảnh thật quay như phim — `s.photo(...)`
+Biến một ảnh chụp thật thành cảnh quay: camera 2.5D có thị sai thật theo bản đồ độ sâu, nước chảy, cây lá lay theo gió, sương trôi, lấy nét theo độ sâu, tia nắng, chỉnh màu. Vẽ ngay và trả về đối tượng để đặt thêm vật thể bám theo ảnh.
+
+Chuẩn bị chất liệu (một lần cho mỗi ảnh): `python3 scripts/photo/prep.py anh.jpg --name river --out <thư mục> --spec river.json` → `river.jpg`, `river.depth.png` (độ sâu Depth Anything V2), `river.mask.png` (R nước, G cây lay, B trời), `river.flow.png` (hướng chảy). Tải cả 4 file lên dự án với tên đúng như trên (`node scripts/seed-tvc-real.js <thư mục>` làm sẵn). Spec JSON vẽ vùng bằng đa giác toạ độ 0..1: `water:[{poly, spine | dir, speed}]`, `sway:[{poly, amount}]`, `sky:[{poly}]`, `autoSway`.
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `image` | Tên ảnh; tự tìm `<tên>.depth`, `<tên>.mask`, `<tên>.flow` (hoặc truyền `depth, mask, flowMap`) |
+| `frame: {zoom, x, y}` | Khung cắt trong ảnh (tâm & độ phóng, toạ độ 0..1) |
+| `camera: {zoom, dolly, truck:[x,y], pan:[x,y], roll, parallax, handheld}` | `dolly` đẩy vào (vật gần to nhanh hơn vật xa), `truck` trượt ngang/ dọc có thị sai, `pan` lia cứng, `handheld` 0..1 rung tay tự nhiên |
+| `flow: {amount, rate, glint}` | Nước chảy theo bản đồ hướng (0.02–0.03 là vừa), lấp lánh trôi theo dòng |
+| `sway: {amount, freq}` | Cây lá lay theo gió (`wind` như `s.nature`), mạnh lên khi có cơn giật |
+| `fog: {amount, speed, scale, near, top, color}` | Mây sương trôi theo gió, dày theo khoảng cách; `top:1` chỉ ở nửa trên |
+| `dof: {focus, aperture, max, focusAt:[u,v], focusMix}` | Độ sâu trường ảnh theo bản đồ độ sâu (0 xa … 1 gần). `focusAt` lấy nét đúng điểm trong ảnh; `focusMix` 0→1 để chuyển nét (rack focus) từ `focus` sang điểm đó |
+| `rays: {x, y, amount, color}` | Tia nắng toả từ điểm (toạ độ màn hình 0..1) qua vùng trời/ vùng sáng |
+| `grade: {exposure, temperature, saturation, contrast, shadows, highlights}` | Chỉnh màu (shadows/highlights là màu nhân, vd `'#e6f0ee'`) |
+| `bloom, bloomThreshold` | Loé sáng quanh vùng sáng |
+| `light: {x, y}`, `sunColor`, `sunIntensity` | Hướng & màu sáng cho vật thể đặt thêm |
+
+Đối tượng trả về: `ph.toScreen(u, v)` → `[x, y]` px (bám theo camera), `ph.depthAt(u, v)`, `ph.drop({u, v | x, y, r, mode:'ball'|'pendant'|'sessile', stretch, beta, sx, sy})` (giọt nước như thấu kính thật), `ph.bottle({u, v | x, y, height, frost, drops, brightness, saturate, contrast, blur, sky, tint, label})` (chai sản phẩm đứng trên điểm ảnh, khớp màu & độ nét với cảnh).
+
+Ví dụ hoàn chỉnh: `examples/tvc-en-nam-real/` (TVC 30 giây dựng từ ảnh thật).
