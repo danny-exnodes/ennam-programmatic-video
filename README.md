@@ -73,6 +73,7 @@ node scripts/frame.js <projectId> <shot> 0.5,1.2 out   # khung full-res của 1 
 node scripts/bench.js <projectId> 3              # đo thời gian render từng shot
 node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
+node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 ```
 
@@ -101,3 +102,10 @@ node test/golden/fixtures/make-assets.js   # sinh lại ảnh tổng hợp cho f
 ```
 
 Thêm fixture: tạo `test/golden/fixtures/<tên>.json` (project JSON như `data/projects/<id>/project.json`, chất liệu đặt ở `fixtures/assets/`, khung cần chụp ở `golden.frames: [{ t, motionBlur }]`) rồi chạy `--update`. Biến tinh chỉnh: `GOLDEN_PIXEL_THRESHOLD`, `GOLDEN_MAX_RATIO`, `GOLDEN_PERF_TOLERANCE`, `GOLDEN_SCALE`.
+
+### QA đo được của đạo diễn (`scripts/test-qa.js`)
+
+Khi đạo diễn AI render thử, `window.__inspect` trả thêm số liệu mỗi shot ở 3 thời điểm cố định (độ sáng TB, độ lệch chuẩn độ sáng, ms/khung, khung chữ của `s.text`); `server/qa.js` đổi thành lỗi: khung đen/gần đen, khung trống một màu, chữ ra ngoài vùng an toàn 6%, > 500 ms/khung, lỗi runtime — gửi cho đạo diễn dạng text để tự sửa (ngưỡng là hằng số đặt tên ở đầu `server/qa.js`). Vòng cuối shot vẫn lỗi runtime → giữ code cũ chạy được và gắn cờ **⚠ Cần xem lại** trên timeline (`shot.needsReview`); cờ tự bỏ khi sửa code shot.
+
+`npm run check` chạy `node scripts/test-qa.js` sau golden: render 5 shot cố ý lỗi trong `test/qa/shots/` (mỗi file mở đầu `// expect: <loại lỗi>`) + 1 shot lành qua đúng đường inspect của đạo diễn (Chromium cố định, server tạm) và yêu cầu phát hiện 100%, shot lành không bị báo; kèm test mock đạo diễn (stub client Anthropic) cho guard vòng cuối. Chỉ Linux x64 như golden.
+

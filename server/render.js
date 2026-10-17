@@ -196,16 +196,22 @@ async function mixAudio(project, videoIn, outFile, duration) {
   await run(FFMPEG, ['-y', '-i', videoIn, ...inputs, '-filter_complex', filters.join(';'), '-map', '0:v', '-map', '[aout]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', outFile]);
 }
 
+/** Scale of the inspection render (QA ms/frame thresholds are measured at this scale). */
+export const INSPECT_SCALE = 0.5;
+
 /**
  * Quick verification used by the AI director: renders a few frames per shot,
- * returns runtime errors and a contact-sheet JPEG (base64) of the cut.
+ * returns runtime errors, per-shot QA metrics (see public/render-page.js and
+ * server/qa.js) and a contact-sheet JPEG (base64) of the cut.
  */
 export async function inspectProject(project, { framesPerShot = 3, thumbWidth = 480 } = {}) {
-  const { page, close, logs } = await openRenderPage(project.id, { override: project, scale: 0.5 });
+  const { page, close, logs } = await openRenderPage(project.id, { override: project, scale: INSPECT_SCALE });
   try {
+    // Wall clock for ms/frame is injected here, outside the engine (engine stays deterministic).
+    await page.evaluate(() => { window.__profNow = () => performance.now(); });
     return await page.evaluate(([n, tw]) => window.__inspect(n, tw), [framesPerShot, thumbWidth]);
   } catch (e) {
-    return { errors: { _page: e.message + '\n' + logs.slice(-5).join('\n') }, sheet: null };
+    return { errors: { _page: e.message + '\n' + logs.slice(-5).join('\n') }, metrics: {}, sheet: null };
   } finally {
     await close();
   }

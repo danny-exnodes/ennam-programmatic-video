@@ -62,8 +62,36 @@ export function normalizeFields(fields) {
   return out;
 }
 
+/**
+ * `shot.needsReview = { reason, at }`: set by the AI director when its final round still
+ * failed at runtime for this shot and the previous working code was kept (see director.js).
+ * Anything malformed is dropped (returns undefined).
+ */
+export function normalizeNeedsReview(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const reason = typeof v.reason === 'string' ? v.reason.slice(0, 2000) : '';
+  if (!reason) return undefined;
+  return { reason, at: typeof v.at === 'string' ? v.at : '' };
+}
+
+/** The needsReview flag clears as soon as the shot's code is edited (compared with `prevShots`). */
+export function clearStaleReview(prevShots, shots) {
+  const prev = new Map((prevShots || []).map((s) => [s.id, s]));
+  for (const s of shots || []) {
+    if (s?.needsReview && prev.has(s.id) && prev.get(s.id).code !== s.code) delete s.needsReview;
+  }
+  return shots;
+}
+
 export function normalizeProject(p) {
-  if (Array.isArray(p?.shots)) for (const s of p.shots) if (s && typeof s === 'object') s.fields = normalizeFields(s.fields);
+  if (Array.isArray(p?.shots)) {
+    for (const s of p.shots) {
+      if (!s || typeof s !== 'object') continue;
+      s.fields = normalizeFields(s.fields);
+      const nr = normalizeNeedsReview(s.needsReview);
+      if (nr) s.needsReview = nr; else delete s.needsReview;
+    }
+  }
   return p;
 }
 

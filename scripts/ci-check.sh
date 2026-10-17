@@ -53,5 +53,14 @@ else
   [ $gc = 0 ] || { fail=1; echo "FAIL  golden-frame (exit $gc) — ảnh diff ở test/golden/out/; thay đổi hình có chủ đích: node scripts/golden.js --update"; }
 fi
 
+# 8. QA đo được cho đạo diễn: 5 shot cố ý lỗi phải bị phát hiện 100%, shot lành không bị báo,
+#    guard vòng cuối không ghi đè code chạy được (scripts/test-qa.js; non-Linux: bỏ qua như golden)
+if [ -n "${SKIP_GOLDEN:-}" ]; then
+  [ -z "${CI:-}" ] && warn "bỏ qua test-qa (SKIP_GOLDEN=1)"
+else
+  node scripts/test-qa.js; qc=$?
+  [ $qc = 0 ] || { fail=1; echo "FAIL  test-qa (exit $qc)"; }
+fi
+
 [ $fail = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
 exit $fail

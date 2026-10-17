@@ -75,6 +75,7 @@ app.put('/api/projects/:id', wrap(async (req, res) => {
   // server owns these fields
   const next = { ...cur, ...body, id: cur.id, assets: body.assets ?? cur.assets, exports: cur.exports, createdAt: cur.createdAt };
   validateProject(next);
+  store.clearStaleReview(cur.shots, next.shots); // editing a flagged shot's code clears needsReview
   await store.saveProject(next, { snapshot: req.query.snapshot === '1', reason: req.query.reason || 'save' });
   res.json(next);
 }));

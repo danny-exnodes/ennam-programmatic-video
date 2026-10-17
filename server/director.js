@@ -10,6 +10,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { projectDir, newId } from './store.js';
 import { thumbBase64, videoStillBase64 } from './media.js';
 import { inspectProject } from './render.js';
+import { qaIssues, describeQa, metricsLine, isRuntimeFailure } from './qa.js';
 import { SCENES } from './templates.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -220,16 +221,22 @@ async function callTool(messages, tool, { signal, log, cache }) {
 function applyCut(project, input) {
   const p = structuredClone(project);
   const old = new Map(p.shots.map((s) => [s.id, s]));
-  p.shots = (input.shots || []).map((s) => ({
-    id: s.id && old.has(s.id) ? s.id : newId('s'),
-    name: s.name || 'Shot',
-    duration: Math.max(0.8, Math.min(12, Number(s.duration) || 3)),
-    transition: s.transition || { type: 'cut' },
-    code: String(s.code || ''),
-    notes: s.notes || '',
-    // keep the user's field values for shots the director kept (same id)
-    fields: (s.id && old.get(s.id)?.fields) || {},
-  }));
+  p.shots = (input.shots || []).map((s) => {
+    const prev = s.id ? old.get(s.id) : null;
+    const shot = {
+      id: prev ? s.id : newId('s'),
+      name: s.name || 'Shot',
+      duration: Math.max(0.8, Math.min(12, Number(s.duration) || 3)),
+      transition: s.transition || { type: 'cut' },
+      code: String(s.code || ''),
+      notes: s.notes || '',
+      // keep the user's field values for shots the director kept (same id)
+      fields: prev?.fields || {},
+    };
+    // needsReview survives only while the code is unchanged
+    if (prev?.needsReview && prev.code === shot.code) shot.needsReview = prev.needsReview;
+    return shot;
+  });
   if (Array.isArray(input.voice)) {
     const oldVoice = new Map(p.voice.map((v) => [v.text.trim(), v]));
     p.voice = input.voice.map((v) => {
@@ -256,7 +263,42 @@ function applyShot(project, shotId, input) {
     code: String(s.code || p.shots[i].code),
     notes: s.notes ?? p.shots[i].notes,
   };
+  if (p.shots[i].code !== project.shots[i].code) delete p.shots[i].needsReview;
   return p;
+}
+
+/**
+ * Final-round guard: a shot that still fails at runtime (throw / syntax error) must never
+ * overwrite a version that ran. Restore its last working code (from an earlier round, or the
+ * project as it was before the director ran) and flag it `needsReview`; a brand-new shot with
+ * no working version keeps its code but is flagged too. Mutates and returns `p`.
+ */
+export function guardFailedShots(p, errs, lastGood, at = new Date().toISOString()) {
+  const restored = [];
+  for (let i = 0; i < p.shots.length; i++) {
+    const sh = p.shots[i];
+    const err = errs[sh.id];
+    if (!err || !isRuntimeFailure(err)) continue;
+    const first = String(err).split('\n').find(isRuntimeFailure) || String(err);
+    const good = lastGood.byId.get(sh.id) || lastGood.byName.get(sh.name);
+    if (good) {
+      p.shots[i] = { ...sh, code: good.code, duration: good.duration, transition: good.transition, name: good.name, notes: good.notes ?? sh.notes };
+      p.shots[i].needsReview = { reason: `Đạo diễn chưa sửa được lỗi runtime ở vòng cuối (${first}); đã giữ code cũ chạy được.`, at };
+    } else {
+      sh.needsReview = { reason: `Shot mới vẫn lỗi runtime sau vòng cuối (${first}); chưa có bản chạy được để giữ lại.`, at };
+    }
+    restored.push({ id: sh.id, name: sh.name, kept: !!good });
+  }
+  return restored;
+}
+
+/** Remember shots that ran without a runtime failure, by id and by name. */
+function rememberGood(lastGood, p, errs) {
+  for (const sh of p.shots) {
+    if (errs[sh.id] && isRuntimeFailure(errs[sh.id])) continue;
+    lastGood.byId.set(sh.id, sh);
+    lastGood.byName.set(sh.name, sh);
+  }
 }
 
 function syntaxErrors(p) {
@@ -317,29 +359,50 @@ export async function runDirector(project, { brief, shotId, review = true, log =
   let next = shotId ? applyShot(project, shotId, r.input) : applyCut(project, r.input);
   let summary = r.input.summary;
 
-  // ---- verify: syntax + headless runtime + visual self-review ----
+  // ---- verify: syntax + headless runtime + QA metrics + visual self-review ----
+  // Shots that ran without a runtime failure, newest first wins (seeded with the project as it was).
+  const lastGood = { byId: new Map(), byName: new Map() };
+  rememberGood(lastGood, project, {});
   const rounds = review ? 3 : 2;
   for (let round = 0; round < rounds; round++) {
     progress(0.5 + round * 0.15, round === 0 ? 'Kiểm tra bằng render thử' : 'Kiểm tra lại sau khi sửa');
     let errs = syntaxErrors(next);
     let sheet = null;
+    let qa = {};
     if (!Object.keys(errs).length) {
       const insp = await inspectProject(next, { framesPerShot: 3 });
       errs = insp.errors || {};
       sheet = insp.sheet;
+      // runtime throws are already in errs → QA list keeps the measurable problems only
+      qa = qaIssues(next, insp);
+      for (const id of Object.keys(qa)) {
+        qa[id] = qa[id].filter((x) => x.code !== 'throw');
+        if (!qa[id].length) delete qa[id];
+      }
+      const ml = metricsLine(next, insp);
+      if (ml) log('Số liệu render thử: ' + ml);
     }
+    rememberGood(lastGood, next, errs);
     const hasErr = Object.keys(errs).length > 0;
+    const hasQa = Object.keys(qa).length > 0;
     const lastRound = round === rounds - 1;
-    if (!hasErr && (!review || round > 0 || !sheet)) break;
+    if (!hasErr && !hasQa && (!review || round > 0 || !sheet)) break;
     if (lastRound) {
       if (hasErr) log('Vẫn còn lỗi sau khi sửa: ' + describeErrors(next, errs));
+      if (hasQa) log('QA vẫn còn vấn đề:\n' + describeQa(next, qa));
+      const kept = guardFailedShots(next, errs, lastGood);
+      for (const k of kept) log(k.kept ? `Shot "${k.name}" vẫn lỗi runtime — giữ code cũ chạy được, gắn cờ cần xem lại` : `Shot "${k.name}" vẫn lỗi runtime và chưa có bản chạy được — gắn cờ cần xem lại`);
       break;
     }
     messages.push({ role: 'assistant', content: r.message.content });
     const feedback = [];
-    if (hasErr) {
-      log('Phát hiện lỗi, đạo diễn đang tự sửa');
-      feedback.push({ type: 'text', text: `Render thử báo lỗi:\n${describeErrors(next, errs)}\nHãy sửa và nộp lại toàn bộ bằng tool.` });
+    if (hasErr || hasQa) {
+      log(hasErr ? 'Phát hiện lỗi, đạo diễn đang tự sửa' : 'Số liệu QA phát hiện vấn đề, đạo diễn đang tự sửa');
+      const parts = [];
+      if (hasErr) parts.push(`Render thử báo lỗi:\n${describeErrors(next, errs)}`);
+      if (hasQa) parts.push(`Số liệu QA (đo trên render thử, 3 thời điểm mỗi shot):\n${describeQa(next, qa)}`);
+      feedback.push({ type: 'text', text: `${parts.join('\n\n')}\nHãy sửa và nộp lại toàn bộ bằng tool.` });
+      if (review && sheet && !hasErr) feedback.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: sheet } });
     } else {
       log('Đạo diễn đang tự duyệt contact sheet');
       feedback.push({ type: 'text', text: 'Đây là contact sheet render thật từ code của bạn (mỗi hàng 1 shot, 3 thời điểm). Hãy tự duyệt như một đạo diễn khó tính: bố cục, độ chân thực của vật lý & chất liệu, chữ có bị che/tràn/sai dấu không, ánh sáng có nhất quán không, có khung nào trống/đen không. Nếu cần, sửa và nộp lại toàn bộ bằng tool; nếu đã tốt thì nộp lại y nguyên.' });
