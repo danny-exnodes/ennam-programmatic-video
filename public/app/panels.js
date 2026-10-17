@@ -44,11 +44,118 @@ async function renderProjects() {
 }
 
 // ---------------------------------------------------------------- director
+// Brief có cấu trúc lưu trong project.brief (xem normalizeBrief trong server/store.js).
+const MOODS = ['Sang trọng', 'Ấm áp', 'Tươi mới', 'Năng động', 'Tối giản', 'Hiện đại', 'Tự nhiên', 'Vui tươi', 'Cảm động', 'Lãng mạn', 'Mạnh mẽ', 'Chuyên nghiệp'];
+const DURATIONS = [6, 10, 15, 20, 30, 45, 60];
+const ASPECTS = [
+  ['16:9', '16:9 · YouTube, LED', '1920x1080'],
+  ['9:16', '9:16 · TikTok, Reels', '1080x1920'],
+  ['1:1', '1:1 · Feed', '1080x1080'],
+  ['4:5', '4:5 · Feed dọc', '1080x1350'],
+];
+const pendingAsk = new Map(); // project id → yêu cầu sửa đang gõ (không lưu, giữ qua lần vẽ lại panel)
+const briefOpen = new Map(); // project id → khung brief đang mở/đóng
+
+/** Sửa một trường brief: lưu qua luồng autosave (server tự snapshot "brief" theo phiên sửa). */
+function setBrief(key, value) {
+  update((pp) => {
+    const b = { ...(pp.brief && typeof pp.brief === 'object' ? pp.brief : {}) };
+    const empty = value == null || value === '' || (Array.isArray(value) && !value.length);
+    if (empty) delete b[key]; else b[key] = value;
+    pp.brief = b;
+  }, { structural: false });
+}
+
+/**
+ * Migrate một lần: brief cũ chỉ nằm trong sessionStorage['brief:'+id] → project.brief.notes
+ * (brief trống thì thay, có rồi thì nối thêm nếu chưa có). Khoá sessionStorage chỉ bị xoá
+ * sau khi lưu lên server thành công (lỗi lưu → lần mở sau thử lại, không mất brief).
+ */
+export async function migrateLegacyBrief(p) {
+  const key = 'brief:' + p.id;
+  let old = null;
+  try { old = sessionStorage.getItem(key); } catch { return false; }
+  if (old == null) return false;
+  const text = old.trim();
+  const b = p.brief && typeof p.brief === 'object' ? p.brief : {};
+  const notes = (b.notes || '').trim();
+  if (text && !notes.includes(text)) {
+    update((pp) => { pp.brief = { ...b, notes: notes ? `${notes}\n\n${text}` : text }; }, { structural: false });
+    await saveNow();
+    if (state.dirty) return false;
+  }
+  try { sessionStorage.removeItem(key); } catch { /* ignore */ }
+  return true;
+}
+
+function briefForm(p) {
+  const b = p.brief && typeof p.brief === 'object' ? p.brief : {};
+  const text = (key, attrs) => {
+    const el = h(attrs.rows ? 'textarea' : 'input', { ...attrs, value: b[key] || '', 'data-brief': key });
+    el.oninput = () => setBrief(key, el.value);
+    return el;
+  };
+  // cảm xúc: chip chọn nhiều (danh sách cố định + tự nhập)
+  const moodBox = h('div', { class: 'chips' });
+  const moods = () => (Array.isArray(p.brief?.moods) ? p.brief.moods : []);
+  const has = (m) => moods().some((x) => x.toLowerCase() === m.toLowerCase());
+  const toggleMood = (m) => {
+    setBrief('moods', has(m) ? moods().filter((x) => x.toLowerCase() !== m.toLowerCase()) : [...moods(), m].slice(0, 8));
+    fillMoods();
+  };
+  const moodInput = h('input', { placeholder: 'Cảm xúc khác… (Enter để thêm)', maxLength: 40, class: 'chip-input' });
+  moodInput.onkeydown = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const v = moodInput.value.trim();
+    if (v && !has(v)) toggleMood(v);
+    moodInput.value = '';
+  };
+  function fillMoods() {
+    const custom = moods().filter((m) => !MOODS.some((x) => x.toLowerCase() === m.toLowerCase()));
+    moodBox.replaceChildren(...[...MOODS, ...custom].map((m) => h('button', {
+      type: 'button', class: 'chip' + (has(m) ? ' on' : ''), 'aria-pressed': has(m) ? 'true' : 'false', onclick: () => toggleMood(m),
+    }, m)));
+  }
+  fillMoods();
+  const dur = h('select', { 'data-brief': 'duration', onchange: (e) => setBrief('duration', e.target.value ? Number(e.target.value) : null) },
+    h('option', { value: '' }, '— Thời lượng —'),
+    DURATIONS.map((d) => h('option', { value: d, selected: b.duration === d }, `${d} giây`)),
+    b.duration && !DURATIONS.includes(b.duration) ? h('option', { value: b.duration, selected: true }, `${b.duration} giây`) : null);
+  const frameKey = `${p.width}x${p.height}`;
+  const aspectHint = h('div', { class: 'small muted', style: { marginTop: '4px' } });
+  const fillHint = () => {
+    const a = ASPECTS.find((x) => x[0] === p.brief?.aspect);
+    aspectHint.textContent = a && a[2] !== frameKey ? `Khung dự án đang là ${p.width}×${p.height} — đổi ở tab Phong cách nếu cần.` : '';
+  };
+  const aspect = h('select', { 'data-brief': 'aspect', onchange: (e) => { setBrief('aspect', e.target.value || null); fillHint(); } },
+    h('option', { value: '' }, '— Kênh / tỉ lệ khung —'),
+    ASPECTS.map(([v, label]) => h('option', { value: v, selected: b.aspect === v }, label)));
+  fillHint();
+  return h('div', { class: 'brief-form' },
+    h('label', {}, 'Sản phẩm / sự kiện'), text('subject', { placeholder: 'VD: Serum Lumi C+ 15% Vitamin C', maxLength: 200 }),
+    h('label', {}, 'Thông điệp chính'), text('message', { placeholder: 'VD: Da sáng sau 14 ngày, dịu nhẹ cho da nhạy cảm', maxLength: 500 }),
+    h('label', {}, 'Cảm xúc'), moodBox, moodInput,
+    h('div', { class: 'row' },
+      h('div', {}, h('label', {}, 'Thời lượng'), dur),
+      h('div', {}, h('label', {}, 'Kênh / tỉ lệ'), aspect)),
+    aspectHint,
+    h('label', {}, 'Kêu gọi hành động (CTA)'), text('cta', { placeholder: 'VD: Đặt hàng ngay – giảm 20%', maxLength: 120 }),
+    h('label', {}, 'Ghi chú tự do'), text('notes', { rows: 4, placeholder: 'Ý tưởng, cảnh muốn có, điều cần tránh… VD: cận cảnh giọt serum rơi, nhấn 3 lợi ích.', maxLength: 4000 }),
+  );
+}
+
+function briefDetails(p) {
+  const d = h('details', { class: 'brief', open: briefOpen.get(p.id) ?? !p.shots.length },
+    h('summary', {}, 'Brief', h('span', { class: 'small muted' }, ' · lưu cùng dự án')), briefForm(p));
+  d.addEventListener('toggle', () => briefOpen.set(p.id, d.open));
+  return d;
+}
+
 function director() {
   const p = state.project;
-  const brief = h('textarea', { placeholder: p.shots.length ? 'Muốn sửa gì? VD: cắt nhanh theo nhạc, màu ấm hơn, thêm shot giá' : 'Mô tả video: sản phẩm, thông điệp, cảm xúc, thời lượng, CTA…\nVD: Video 20s cho serum Lumi C+ 15% Vitamin C, cảm giác sang trọng ấm, cận cảnh giọt serum rơi, nhấn 3 lợi ích, kết bằng CTA đặt hàng.', style: { minHeight: '120px' } });
-  brief.value = sessionStorage.getItem('brief:' + p.id) || '';
-  brief.oninput = () => sessionStorage.setItem('brief:' + p.id, brief.value);
+  const ask = h('textarea', { placeholder: 'Muốn sửa gì lần này? VD: cắt nhanh theo nhạc, màu ấm hơn, thêm shot giá', style: { minHeight: '80px' }, value: pendingAsk.get(p.id) || '' });
+  ask.oninput = () => pendingAsk.set(p.id, ask.value);
   const btn = h('button', {
     class: 'primary block',
     disabled: !state.config.director,
@@ -56,10 +163,11 @@ function director() {
       try {
         btn.disabled = true;
         await saveNow();
-        const job = await api.director(p.id, { brief: brief.value });
+        const job = await api.director(p.id, { brief: p.brief || {}, request: p.shots.length ? ask.value : '' });
         trackJob(job, (j) => {
           btn.disabled = false;
           if (j.status === 'done') {
+            pendingAsk.delete(p.id);
             setProject(j.result.project, { keepSelection: false });
             toast('🎬 ' + (j.result.project.lastDirector?.summary || 'Đạo diễn đã dựng xong'), { ms: 8000 });
           } else toast('Đạo diễn lỗi: ' + j.error, { error: true, ms: 10000 });
@@ -75,7 +183,8 @@ function director() {
   return h('div', {},
     h('div', { class: 'back' }, h('button', { class: 'ghost', onclick: () => { state.view = 'projects'; renderPanel(); } }, '← Dự án'), h('strong', {}, p.name)),
     h('div', { class: 'meta' }, `${p.width}×${p.height} · ${fmt(duration())} · ${p.shots.length} shot · ${voices} câu thoại${p.music ? ' · 🎵' : ''}`),
-    h('label', {}, 'Brief / yêu cầu sửa'), brief,
+    briefDetails(p),
+    p.shots.length ? [h('label', {}, 'Yêu cầu sửa lần này'), ask] : null,
     h('div', { style: { height: '10px' } }), btn,
     h('p', { class: 'small muted' }, state.config.director
       ? `Đạo diễn: ${state.config.model}. Đạo diễn xem ảnh chất liệu, viết code từng shot, render thử, tự duyệt contact sheet rồi sửa.`

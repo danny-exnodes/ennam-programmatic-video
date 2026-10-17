@@ -33,7 +33,7 @@ export function defaultProject(o = {}) {
     width: o.width || 1920,
     height: o.height || 1080,
     fps: o.fps || 30,
-    brief: o.brief || '',
+    brief: normalizeBrief(o.brief),
     style: {
       grade: 'warm', vignette: 0.35, grain: 0.05, bloom: 0.25, letterbox: 0,
       palette: { primary: '#f08a12', accent: '#f5b54a', text: '#ffffff' },
@@ -83,7 +83,62 @@ export function clearStaleReview(prevShots, shots) {
   return shots;
 }
 
+/**
+ * `project.brief` — brief có cấu trúc, lưu cùng dự án (issue #9). Chỉ giữ trường có giá trị:
+ *   subject  string ≤ 200   sản phẩm / sự kiện
+ *   message  string ≤ 500   thông điệp chính
+ *   moods    string[] ≤ 8   cảm xúc (mỗi mục ≤ 40 ký tự, bỏ trùng không phân biệt hoa thường)
+ *   duration number 3–180   thời lượng mong muốn (giây, làm tròn)
+ *   aspect   '16:9' | '9:16' | '1:1' | '4:5'   kênh / tỉ lệ khung
+ *   cta      string ≤ 120   kêu gọi hành động
+ *   notes    string ≤ 4000  ghi chú tự do
+ * Khoá lạ bị bỏ, chuỗi được trim + cắt độ dài. Brief cũ dạng chuỗi → `{ notes }`.
+ */
+export const BRIEF_ASPECTS = ['16:9', '9:16', '1:1', '4:5'];
+const BRIEF_TEXT = { subject: 200, message: 500, cta: 120, notes: 4000 };
+export function normalizeBrief(b) {
+  if (typeof b === 'string') b = { notes: b };
+  const out = {};
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return out;
+  const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const subject = str(b.subject, BRIEF_TEXT.subject);
+  if (subject) out.subject = subject;
+  const message = str(b.message, BRIEF_TEXT.message);
+  if (message) out.message = message;
+  if (Array.isArray(b.moods)) {
+    const seen = new Set();
+    const moods = [];
+    for (const m of b.moods) {
+      const v = str(m, 40);
+      if (!v || seen.has(v.toLowerCase())) continue;
+      seen.add(v.toLowerCase());
+      moods.push(v);
+      if (moods.length >= 8) break;
+    }
+    if (moods.length) out.moods = moods;
+  }
+  const d = Math.round(Number(b.duration));
+  if (b.duration !== '' && b.duration != null && Number.isFinite(d) && d >= 3 && d <= 180) out.duration = d;
+  if (BRIEF_ASPECTS.includes(b.aspect)) out.aspect = b.aspect;
+  const cta = str(b.cta, BRIEF_TEXT.cta);
+  if (cta) out.cta = cta;
+  const notes = str(b.notes, BRIEF_TEXT.notes);
+  if (notes) out.notes = notes;
+  return out;
+}
+
+export function briefEqual(a, b) {
+  return JSON.stringify(normalizeBrief(a)) === JSON.stringify(normalizeBrief(b));
+}
+
+/** Brief gọn cho đạo diễn: JSON một dòng, trường trống đã bỏ; '' nếu brief trống. */
+export function compactBrief(b) {
+  const n = normalizeBrief(b);
+  return Object.keys(n).length ? JSON.stringify(n) : '';
+}
+
 export function normalizeProject(p) {
+  if (p && typeof p === 'object') p.brief = normalizeBrief(p.brief);
   if (Array.isArray(p?.shots)) {
     for (const s of p.shots) {
       if (!s || typeof s !== 'object') continue;
@@ -153,6 +208,24 @@ export async function listHistory(id) {
   } catch {
     return [];
   }
+}
+
+/** "2026-10-17T08-30-00-123Z" (tên file lịch sử) → ms epoch; NaN nếu sai định dạng. */
+export function historyStampMs(stamp) {
+  const m = /^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/.exec(stamp || '');
+  return m ? Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) : NaN;
+}
+
+/**
+ * Sửa brief tạo snapshot "brief" (bản trước khi sửa), gộp theo phiên: không tạo thêm nếu
+ * snapshot mới nhất đã là "brief" và cách đây < gapMs (gõ liên tục không làm đầy lịch sử).
+ */
+export const BRIEF_SNAPSHOT_GAP_MS = 2 * 60 * 1000;
+export async function shouldSnapshotBrief(id, gapMs = BRIEF_SNAPSHOT_GAP_MS, now = Date.now()) {
+  const [last] = await listHistory(id);
+  if (!last || last.reason !== 'brief') return true;
+  const at = historyStampMs(last.at);
+  return !(now - at < gapMs);
 }
 
 export async function loadHistory(id, file) {
