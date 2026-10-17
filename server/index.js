@@ -7,9 +7,9 @@ import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
 import { kindOf, probe, normalizeImage } from './media.js';
-import { createJob, getJob, publicJob, listJobs, cancelJob } from './jobs.js';
-import { renderProject } from './render.js';
-import { runDirector, directorAvailable, DIRECTOR_MODEL } from './director.js';
+import { initJobs, createJob, getJob, publicJob, listJobs, cancelJob, retryJob, hasKind, jobEvents, TERMINAL, DIRECTOR_CONCURRENCY } from './jobs.js';
+import { registerDefaultKinds } from './job-kinds.js';
+import { directorAvailable, DIRECTOR_MODEL } from './director.js';
 import { synthesize, ttsAvailable, listVoices } from './tts.js';
 import { TEMPLATES, buildFromTemplate } from './templates.js';
 
@@ -207,15 +207,11 @@ app.post('/api/projects/:id/voice/:lineId/tts', wrap(async (req, res) => {
 }));
 
 // --- AI director ---
+// Jobs store kind + params only; the project is (re)read when the job starts (server/job-kinds.js).
 app.post('/api/projects/:id/director', wrap(async (req, res) => {
   const p = await store.loadProject(req.params.id);
   const { brief = '', shotId = null, review = true } = req.body || {};
-  const job = createJob('director', p.id, async ({ log, progress, signal }) => {
-    const next = await runDirector(p, { brief, shotId, review, log, progress, signal });
-    await store.saveProject(next, { snapshot: true, reason: shotId ? 'ai-shot' : 'ai-director' });
-    return { project: next };
-  });
-  res.json(publicJob(job));
+  res.json(publicJob(createJob('director', p.id, { brief, shotId, review })));
 }));
 
 // --- render ---
@@ -223,14 +219,7 @@ app.post('/api/projects/:id/render', wrap(async (req, res) => {
   const p = await store.loadProject(req.params.id);
   if (!p.shots.length) return res.status(400).json({ error: 'Dự án chưa có shot nào' });
   const quality = req.body?.quality || 'standard';
-  const job = createJob('render', p.id, async ({ progress, signal }) => {
-    const exp = await renderProject(p, { quality, onProgress: progress, signal });
-    const fresh = await store.loadProject(p.id);
-    fresh.exports = [exp, ...(fresh.exports || [])].slice(0, 50);
-    await store.saveProject(fresh);
-    return exp;
-  }, { serial: true });
-  res.json(publicJob(job));
+  res.json(publicJob(createJob('render', p.id, { quality })));
 }));
 
 app.delete('/api/projects/:id/exports/:file', wrap(async (req, res) => {
@@ -250,6 +239,67 @@ app.get('/api/jobs/:id', (req, res) => {
   res.json(publicJob(j));
 });
 app.post('/api/jobs/:id/cancel', (req, res) => res.json({ ok: cancelJob(req.params.id) }));
+// "Chạy lại": new job with the same kind + params (interrupted / error / cancelled jobs)
+app.post('/api/jobs/:id/retry', (req, res) => {
+  const j = retryJob(req.params.id);
+  if (!j) return res.status(404).json({ error: 'Không có job' });
+  res.json(publicJob(j));
+});
+
+// Server-Sent Events: `event: job` carries the full job JSON on every change.
+const SSE_HEARTBEAT_MS = 15000;
+function sseOpen(req, res) {
+  res.status(200).set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // nginx: don't buffer
+  });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  const hb = setInterval(() => res.write(': ping\n\n'), SSE_HEARTBEAT_MS);
+  const cleanups = [() => clearInterval(hb)];
+  const close = () => { while (cleanups.length) cleanups.pop()(); };
+  req.on('close', close);
+  return {
+    send: (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+    onClose: (fn) => cleanups.push(fn),
+    end: () => { close(); res.end(); },
+  };
+}
+
+app.get('/api/jobs/:id/events', (req, res) => {
+  const j = getJob(req.params.id);
+  if (!j) return res.status(404).json({ error: 'Không có job' });
+  const sse = sseOpen(req, res);
+  sse.send('job', publicJob(j));
+  if (TERMINAL.has(j.status)) return sse.end();
+  const on = (job) => {
+    if (job.id !== j.id) return;
+    sse.send('job', publicJob(job));
+    if (TERMINAL.has(job.status)) sse.end();
+  };
+  jobEvents.on('update', on);
+  sse.onClose(() => jobEvents.off('update', on));
+});
+
+app.get('/api/projects/:id/jobs/events', (req, res) => {
+  store.projectDir(req.params.id); // validates id
+  const sse = sseOpen(req, res);
+  sse.send('jobs', listJobs(req.params.id));
+  const on = (job) => { if (job.projectId === req.params.id) sse.send('job', publicJob(job)); };
+  jobEvents.on('update', on);
+  sse.onClose(() => jobEvents.off('update', on));
+});
+
+// Fake job kinds for scripts/test-jobs.js — only exposed when JOBS_TEST_KINDS=1.
+if (process.env.JOBS_TEST_KINDS === '1') {
+  app.post('/api/test/jobs', (req, res) => {
+    const { kind, projectId = 'test', params = {} } = req.body || {};
+    if (!/^test-/.test(kind || '') || !hasKind(kind)) return res.status(400).json({ error: 'kind không hợp lệ' });
+    res.json(publicJob(createJob(kind, projectId, params)));
+  });
+}
 
 // --- errors ---
 app.use((err, _req, res, _next) => {
@@ -265,7 +315,10 @@ function validateProject(p) {
   }
 }
 
+registerDefaultKinds();
+initJobs();
+
 app.listen(PORT, () => {
   console.log(`Ennam Motion Studio → http://localhost:${PORT}`);
-  console.log(`  Đạo diễn AI: ${directorAvailable() ? DIRECTOR_MODEL : 'tắt (đặt ANTHROPIC_API_KEY)'} · TTS: ${ttsAvailable() ? 'bật' : 'tắt'}`);
+  console.log(`  Đạo diễn AI: ${directorAvailable() ? DIRECTOR_MODEL : 'tắt (đặt ANTHROPIC_API_KEY)'} · TTS: ${ttsAvailable() ? 'bật' : 'tắt'} · Đạo diễn song song tối đa: ${DIRECTOR_CONCURRENCY}`);
 });

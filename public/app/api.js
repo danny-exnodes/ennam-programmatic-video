@@ -33,6 +33,8 @@ export const api = {
   job: (jid) => req('GET', `/api/jobs/${jid}`),
   jobs: (pid) => req('GET', `/api/jobs?project=${pid}`),
   cancel: (jid) => req('POST', `/api/jobs/${jid}/cancel`),
+  retry: (jid) => req('POST', `/api/jobs/${jid}/retry`),
+  jobEventsUrl: (jid) => `/api/jobs/${jid}/events`,
   history: (id) => req('GET', `/api/projects/${id}/history`),
   restore: (id, file) => req('POST', `/api/projects/${id}/history/${encodeURIComponent(file)}/restore`),
 };
