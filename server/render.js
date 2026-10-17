@@ -101,6 +101,7 @@ export async function renderProject(project, opts = {}) {
   let ffErr = '';
   ff.stderr.on('data', (d) => (ffErr = (ffErr + d).slice(-4000)));
   const ffDone = new Promise((res, rej) => ff.on('close', (c) => (c === 0 ? res() : rej(new Error('ffmpeg: ' + ffErr)))));
+  ffDone.catch(() => {}); // khi huỷ/lỗi ta kill ffmpeg mà không await ffDone — tránh unhandled rejection làm sập server
   ff.stdin.on('error', () => {});
   const write = (buf) => new Promise((res, rej) => (ff.stdin.write(buf, (e) => (e ? rej(e) : res()))));
   try {

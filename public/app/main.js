@@ -35,15 +35,19 @@ async function openProject(id) {
   $('projName').value = p.name;
   fitTimeline();
   renderAll();
-  // resume tracking jobs that are still running on the server
+  // resume tracking jobs that are still running on the server; show interrupted ones ("Chạy lại")
   for (const j of await api.jobs(id)) {
     if (j.status === 'running' || j.status === 'queued') trackJob(j, (jj) => onJobDone(jj));
+    else if (j.status === 'interrupted') { state.jobs = [...state.jobs, j]; emit('jobs'); }
   }
 }
 
 function onJobDone(j) {
-  if (j.kind === 'render' && j.status === 'done') api.get(state.project.id).then((p) => { state.project.exports = p.exports; renderPanel(); });
+  if (j.projectId !== state.project?.id || j.status !== 'done') return;
+  if (j.kind === 'render') api.get(state.project.id).then((p) => { state.project.exports = p.exports; renderPanel(); });
+  else if (j.kind === 'director' && j.retryOf && j.result?.project) setProject(j.result.project);
 }
+on('jobdone', onJobDone);
 
 function renderAll() {
   refresh();
