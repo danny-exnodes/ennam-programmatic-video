@@ -69,5 +69,14 @@ else
   [ $qc = 0 ] || { fail=1; echo "FAIL  test-qa (exit $qc)"; }
 fi
 
+# 9. Mẫu theo mùa (#24): mọi công thức theo mùa render ở 16:9 + 9:16 qua đường inspect của đạo diễn,
+#    không lỗi QA (chữ tràn vùng an toàn, đen, trống, throw); prompt đạo diễn không đổi (scripts/test-seasonal.js)
+if [ -n "${SKIP_GOLDEN:-}" ]; then
+  [ -z "${CI:-}" ] && warn "bỏ qua test-seasonal (SKIP_GOLDEN=1)"
+else
+  node scripts/test-seasonal.js; sc=$?
+  [ $sc = 0 ] || { fail=1; echo "FAIL  test-seasonal (exit $sc)"; }
+fi
+
 [ $fail = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
 exit $fail

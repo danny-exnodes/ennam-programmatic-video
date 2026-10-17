@@ -22,6 +22,10 @@
     "text": {
       "msPerFrame": 1.09,
       "norm": 0.018
+    },
+    "yearend": {
+      "msPerFrame": 16.18,
+      "norm": 0.2597
     }
   }
 }
