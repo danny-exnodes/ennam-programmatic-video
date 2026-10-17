@@ -45,7 +45,7 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 
 ## Giao diện
 
-- **Đạo diễn AI** — viết brief → Claude dựng/sửa cả video; Contact sheet; Xuất MP4; danh sách bản đã xuất; Storyboard.
+- **Đạo diễn AI** — form **Brief** có cấu trúc (sản phẩm/sự kiện, thông điệp chính, cảm xúc dạng chip chọn nhiều + tự nhập, thời lượng, kênh/tỉ lệ khung, CTA, ghi chú tự do) lưu cùng dự án (`project.brief`, tự lưu như mọi chỉnh sửa, có trong Lịch sử, mở từ máy khác vẫn còn); khi đã có shot thêm ô *Yêu cầu sửa lần này* → Claude dựng/sửa cả video; Contact sheet; Xuất MP4; danh sách bản đã xuất; Storyboard. Brief cũ chỉ nằm trong `sessionStorage` của trình duyệt được tự chuyển vào *Ghi chú tự do* một lần khi mở dự án.
 - **Nhanh** — dựng ngay từ công thức (Quảng cáo sản phẩm, Teaser, Recap sự kiện) không cần AI.
 - **Mẫu cảnh** — chèn cảnh mẫu (giọt rơi vương miện, rót chất lỏng, sản phẩm rơi nảy, bùng nổ thành phần, 3 lợi ích, CTA, Ken Burns).
 - **Media** — tải ảnh/video/nhạc. Đặt tên & mô tả để đạo diễn hiểu vai trò. PNG nền trong suốt cho sản phẩm.
@@ -55,7 +55,7 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 - **Cột phải** — thuộc tính shot, chuyển cảnh, mục **Nội dung** (form tự sinh từ các `s.field` của shot: chữ, màu, số, ảnh từ Chất liệu; gõ là xem trước đổi ngay, không gọi AI; *Về mặc định* bỏ giá trị đã sửa), *Nhờ đạo diễn* cho riêng shot, sửa code trực tiếp (xem trước cập nhật ngay).
 - **Timeline** — kéo mép phải shot đổi độ dài, kéo shot đổi thứ tự, kéo câu thoại để dời, bấm thước để tua.
 - **Job** (tab Đạo diễn AI) — tiến độ đạo diễn/xuất video cập nhật tức thì qua SSE (tự chuyển sang poll nếu SSE lỗi); huỷ được cả job đang chờ. Job lưu ở `DATA_DIR/jobs/`, nên khi server khởi động lại giữa chừng job hiện **⚠️ gián đoạn** kèm log cũ và nút **↻ Chạy lại**.
-- **Lịch sử** — mọi lần AI/mẫu thay đổi đều lưu phiên bản cũ, khôi phục 1 chạm.
+- **Lịch sử** — mọi lần AI/mẫu thay đổi và mỗi phiên sửa brief (*Trước khi sửa brief*, gộp các lần gõ cách nhau < 2 phút) đều lưu phiên bản cũ, khôi phục 1 chạm.
 
 Phím tắt: `Space` phát/dừng · `←/→` từng khung (`Shift` = 1 giây) · `Home` về đầu · `Ctrl/⌘+S` lưu.
 
@@ -77,6 +77,7 @@ node scripts/bench.js <projectId> 3              # đo thời gian render từng
 node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
 node scripts/test-jobs.js                        # test hàng đợi job: restart → interrupted, giới hạn song song, huỷ, render đọc project lúc chạy, SSE (tự bật server con)
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
+node scripts/test-brief.js                       # test offline brief có cấu trúc: chuẩn hoá, JSON gọn gửi đạo diễn (stub client), snapshot "brief" + khôi phục (tự bật server con)
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 ```
