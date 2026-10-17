@@ -6,6 +6,11 @@ async function req(method, url, body, isForm) {
   });
   const ct = r.headers.get('content-type') || '';
   const data = ct.includes('json') ? await r.json() : await r.text();
+  // session expired / user disabled (accounts mode) → back to the login page
+  if (r.status === 401 && data && data.login) {
+    location.href = `${data.login}?next=${encodeURIComponent(location.pathname + location.hash)}`;
+    throw new Error('Cần đăng nhập');
+  }
   if (!r.ok) throw new Error((data && data.error) || r.statusText);
   return data;
 }
@@ -37,6 +42,19 @@ export const api = {
   jobEventsUrl: (jid) => `/api/jobs/${jid}/events`,
   history: (id) => req('GET', `/api/projects/${id}/history`),
   restore: (id, file) => req('POST', `/api/projects/${id}/history/${encodeURIComponent(file)}/restore`),
+  // accounts (issue #25)
+  authStatus: () => req('GET', '/api/auth/status'),
+  logout: () => req('POST', '/api/auth/logout'),
+  tokens: () => req('GET', '/api/account/tokens'),
+  createToken: (name) => req('POST', '/api/account/tokens', { name }),
+  revokeToken: (tid) => req('DELETE', `/api/account/tokens/${tid}`),
+  changePassword: (current, password) => req('POST', '/api/account/password', { current, password }),
+  myUsage: (month) => req('GET', `/api/account/usage${month ? `?month=${month}` : ''}`),
+  users: () => req('GET', '/api/admin/users'),
+  createUser: (b) => req('POST', '/api/admin/users', b),
+  updateUser: (uid, b) => req('PATCH', `/api/admin/users/${uid}`, b),
+  resetPassword: (uid, password) => req('POST', `/api/admin/users/${uid}/password`, { password }),
+  usage: (month) => req('GET', `/api/admin/usage${month ? `?month=${month}` : ''}`),
 };
 export const fileUrl = (p, a) => `/files/${p.id}/assets/${encodeURIComponent(a.file)}`;
 export const exportUrl = (p, f, dl) => `/files/${p.id}/exports/${encodeURIComponent(f)}${dl ? '?download=1' : ''}`;

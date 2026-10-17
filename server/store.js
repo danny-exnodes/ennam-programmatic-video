@@ -3,6 +3,7 @@
 //   data/projects/<id>/assets/*       — uploaded materials (images, video, audio)
 //   data/projects/<id>/exports/*.mp4  — rendered videos
 //   data/projects/<id>/history/*.json — snapshots before each AI edit / save
+//                                       (`meta: { userId, reason, at }` first: who made the change)
 import fs from 'node:fs/promises';
 import fss from 'node:fs';
 import path from 'node:path';
@@ -176,13 +177,22 @@ export async function loadProject(id) {
   }
 }
 
-export async function saveProject(p, { snapshot = false, reason = '' } = {}) {
+/**
+ * Save project.json. With `snapshot`, the previous version is first copied to history/
+ * (file name unchanged: `<stamp>__<reason>.json`) with `meta: { userId, reason, at }`
+ * written as the first key — userId of whoever triggered the change (null = unknown).
+ */
+export async function saveProject(p, { snapshot = false, reason = '', userId = null } = {}) {
   await ensureDirs(p.id);
   const f = path.join(projectDir(p.id), 'project.json');
   if (snapshot && fss.existsSync(f)) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const now = new Date().toISOString();
+    const stamp = now.replace(/[:.]/g, '-');
     const slug = (reason || 'save').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
-    await fs.copyFile(f, path.join(projectDir(p.id), 'history', `${stamp}__${slug}.json`));
+    const prev = JSON.parse(await fs.readFile(f, 'utf8'));
+    delete prev.meta;
+    const snap = { meta: { userId: userId || null, reason: slug, at: now }, ...prev };
+    await fs.writeFile(path.join(projectDir(p.id), 'history', `${stamp}__${slug}.json`), JSON.stringify(snap, null, 2));
     // keep last 40 snapshots
     const hist = (await fs.readdir(path.join(projectDir(p.id), 'history'))).sort();
     for (const old of hist.slice(0, Math.max(0, hist.length - 40))) {
@@ -201,12 +211,28 @@ export async function listHistory(id) {
   const dir = path.join(projectDir(id), 'history');
   try {
     const files = (await fs.readdir(dir)).sort().reverse();
-    return files.map((f) => {
+    return Promise.all(files.map(async (f) => {
       const [stamp, reason] = f.replace('.json', '').split('__');
-      return { file: f, reason, at: stamp };
-    });
+      return { file: f, reason, at: stamp, userId: await historyUserId(path.join(dir, f)) };
+    }));
   } catch {
     return [];
+  }
+}
+
+/** `meta.userId` of a snapshot without parsing the whole file (meta is written first). Legacy → null. */
+async function historyUserId(file) {
+  let fh;
+  try {
+    fh = await fs.open(file, 'r');
+    const { buffer, bytesRead } = await fh.read(Buffer.alloc(512), 0, 512, 0);
+    const head = buffer.subarray(0, bytesRead).toString('utf8');
+    const m = /^\{\s*"meta":\s*\{[^{}]*?"userId":\s*"([^"]+)"/.exec(head);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  } finally {
+    await fh?.close();
   }
 }
 
@@ -230,7 +256,9 @@ export async function shouldSnapshotBrief(id, gapMs = BRIEF_SNAPSHOT_GAP_MS, now
 
 export async function loadHistory(id, file) {
   if (!/^[\w.-]+\.json$/.test(file)) throw Object.assign(new Error('bad file'), { status: 400 });
-  return normalizeProject(JSON.parse(await fs.readFile(path.join(projectDir(id), 'history', file), 'utf8')));
+  const p = JSON.parse(await fs.readFile(path.join(projectDir(id), 'history', file), 'utf8'));
+  delete p.meta; // snapshot metadata is not part of the project
+  return normalizeProject(p);
 }
 
 export async function deleteProject(id) {

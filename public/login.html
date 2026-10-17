@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đăng nhập · Ennam Motion Studio</title>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-page">
+<main class="login-card">
+  <div class="login-brand"><span class="logo">✨</span><strong>Ennam Motion Studio</strong></div>
+  <h1>Đăng nhập</h1>
+  <form id="loginForm" autocomplete="on">
+    <label for="username">Tên đăng nhập</label>
+    <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+    <label for="password">Mật khẩu</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <div class="login-error" id="loginError" role="alert" hidden></div>
+    <button class="primary block" id="loginBtn" type="submit">Đăng nhập</button>
+  </form>
+  <p class="small muted" id="loginHint">Chưa có tài khoản? Nhờ quản trị tạo cho bạn.</p>
+  <p class="small" id="legacyBox" hidden>Trong giai đoạn chuyển tiếp vẫn có thể <a href="/legacy-login">dùng mật khẩu chung cũ</a> (đến <span id="legacyUntil"></span>).</p>
+</main>
+<script type="module" src="/login.js"></script>
+</body>
+</html>

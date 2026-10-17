@@ -5,6 +5,7 @@ import * as store from './store.js';
 import { registerKind } from './jobs.js';
 import { renderProject } from './render.js';
 import { runDirector } from './director.js';
+import { recordUsage } from './usage.js';
 
 /**
  * Shared start of every render-like job: read the project NOW (not at enqueue
@@ -25,6 +26,14 @@ async function saveExport(projectId, exp) {
   await store.saveProject(fresh);
 }
 
+/** Usage per user (#25): persisted on the job (`job.usage`) + one line in DATA_DIR/usage/<YYYY-MM>.jsonl. */
+async function recordDirectorUsage(ctx, total) {
+  if (!total) return;
+  ctx.set({ usage: total });
+  await recordUsage({ userId: ctx.job.userId, projectId: ctx.job.projectId, jobId: ctx.job.id, usage: total })
+    .catch((e) => console.error('[usage] ghi log usage lỗi:', e.message));
+}
+
 const sleep = (ms, signal) => new Promise((res, rej) => {
   const t = setTimeout(res, ms);
   signal?.addEventListener('abort', () => { clearTimeout(t); rej(new Error('Đã huỷ')); }, { once: true });
@@ -38,7 +47,13 @@ export function registerDefaultKinds() {
     run: async ({ brief = '', request, shotId = null, review = true }, ctx) => {
       const p = await store.loadProject(ctx.job.projectId);
       const next = await runDirector(p, { brief, request, shotId, review, log: ctx.log, progress: ctx.progress, signal: ctx.signal });
-      await store.saveProject(next, { snapshot: true, reason: shotId ? 'ai-shot' : 'ai-director' });
+      const userId = ctx.job.userId || null;
+      if (next.lastDirector) {
+        next.lastDirector.userId = userId;
+        if (next.lastDirector.usage) next.lastDirector.usage.userId = userId;
+      }
+      await store.saveProject(next, { snapshot: true, reason: shotId ? 'ai-shot' : 'ai-director', userId });
+      await recordDirectorUsage(ctx, next.lastDirector?.usage?.total);
       return { project: next };
     },
   });
@@ -58,12 +73,14 @@ export function registerDefaultKinds() {
     // director-like: same lane/limit as 'director'; `steps` × `stepMs`
     registerKind('test-director', {
       lane: 'director',
-      run: async ({ steps = 3, stepMs = 200 }, ctx) => {
+      run: async ({ steps = 3, stepMs = 200, usage = null }, ctx) => {
         for (let i = 1; i <= steps; i++) {
           await sleep(stepMs, ctx.signal);
           ctx.log(`bước ${i}/${steps}`);
           ctx.progress(i / steps, `bước ${i}/${steps}`);
         }
+        // director-like usage record (scripts/test-auth.js checks per-user monthly aggregation)
+        if (usage) await recordDirectorUsage(ctx, usage);
         return { steps };
       },
     });

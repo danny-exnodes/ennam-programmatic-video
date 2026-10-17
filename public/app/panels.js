@@ -4,6 +4,7 @@ import { state, on, emit, update, duration, shotStarts, trackJob, retryJob, setP
 import { api, fileUrl, exportUrl } from './api.js';
 import { engine } from './player.js';
 import { MATERIALS, GRADES, ICON_NAMES } from '/engine/engine.js';
+import { whoLabel } from './account.js';
 
 const panel = document.getElementById('panel');
 
@@ -223,6 +224,7 @@ function fillJobs(box) {
   box.replaceChildren(...state.jobs.map((j) => h('div', { class: 'job' },
     h('div', { class: 'row' },
       h('strong', {}, j.kind === 'render' ? '⬇ Xuất video' : '🎬 Đạo diễn'),
+      whoLabel(j.userName),
       h('span', { class: 'small muted', style: { textAlign: 'right' } }, JOB_STATUS[j.status] || Math.round(j.progress * 100) + '%')),
     h('div', { class: 'bar' }, h('div', { style: { width: Math.round(j.progress * 100) + '%' } })),
     h('div', { class: 'log' }, j.status === 'interrupted' ? [j.error, ...(j.log || []).slice(-6)].join('\n') : j.error && j.status !== 'done' ? j.error : j.message),

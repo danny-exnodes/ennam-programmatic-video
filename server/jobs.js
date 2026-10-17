@@ -160,7 +160,8 @@ async function runJob(job) {
 
 /**
  * Create and enqueue a job of a registered kind.
- * extra: fields stored on the job (e.g. { retryOf }).
+ * extra: fields stored on the job (e.g. { retryOf, userId }). `userId` (null = unknown/legacy)
+ * is who created the job (issue #25).
  */
 export function createJob(kind, projectId, params = {}, extra = {}) {
   if (!kinds.has(kind)) throw Object.assign(new Error(`Không có loại job "${kind}"`), { status: 400 });
@@ -168,6 +169,7 @@ export function createJob(kind, projectId, params = {}, extra = {}) {
   const job = {
     id: newId('j'), kind, projectId, params, status: 'queued', progress: 0, message: 'Đang chờ',
     log: [], result: null, error: null, createdAt: now, startedAt: null, finishedAt: null, updatedAt: now,
+    userId: null,
     ...extra,
   };
   jobs.set(job.id, job);
@@ -180,12 +182,12 @@ export function createJob(kind, projectId, params = {}, extra = {}) {
   return job;
 }
 
-/** Re-create a finished/interrupted job from its stored kind + params. */
-export function retryJob(id) {
+/** Re-create a finished/interrupted job from its stored kind + params. extra: e.g. { userId } of who retried. */
+export function retryJob(id, extra = {}) {
   const old = jobs.get(id);
   if (!old) return null;
   if (!TERMINAL.has(old.status)) throw Object.assign(new Error('Job vẫn đang chạy/chờ'), { status: 409 });
-  return createJob(old.kind, old.projectId, structuredClone(old.params || {}), { retryOf: old.id });
+  return createJob(old.kind, old.projectId, structuredClone(old.params || {}), { retryOf: old.id, ...extra });
 }
 
 export function getJob(id) {

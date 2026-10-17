@@ -48,7 +48,11 @@ if [ "$c1" = 200 ] && [ "$c2" = 200 ]; then ok "server khởi động, phục v�
 # 7. Hàng đợi job bền vững: lưu/restart → interrupted, giới hạn song song, huỷ, SSE (server con, kind giả)
 if node scripts/test-jobs.js; then ok "job queue (test-jobs.js)"; else bad "job queue (scripts/test-jobs.js)"; fi
 
-# 7b. Đạo diễn offline (stub client, không gọi API): prompt caching + brief có cấu trúc (#9)
+# 7b. Tài khoản riêng (#25): 401 khi có user, đăng nhập, rate limit, chuyển tiếp APP_PASSWORD 30 ngày,
+#     khoá user ≤ cache, token chỉ lưu băm, không lộ secret trong log, userId trên job + lịch sử (server con)
+if node scripts/test-auth.js; then ok "tài khoản + phiên + token (test-auth.js)"; else bad "tài khoản (scripts/test-auth.js)"; fi
+
+# 7c. Đạo diễn offline (stub client, không gọi API): prompt caching + brief có cấu trúc (#9)
 if node scripts/test-director-cache.js >/dev/null; then ok "director cache (test-director-cache.js)"; else bad "director cache (scripts/test-director-cache.js)"; fi
 if node scripts/test-brief.js; then ok "brief có cấu trúc (test-brief.js)"; else bad "brief có cấu trúc (scripts/test-brief.js)"; fi
 
