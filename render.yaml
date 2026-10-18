@@ -1,0 +1,31 @@
+# Render Blueprint — Dashboard → New → Blueprint → chọn repo này.
+# Cần gói có ổ đĩa bền (Starter trở lên); Chromium + ffmpeg nên dùng ≥ 2 GB RAM (Standard).
+services:
+  - type: web
+    name: ennam-motion-studio
+    runtime: docker
+    plan: standard
+    region: singapore
+    healthCheckPath: /engine/engine.js
+    envVars:
+      - key: PORT
+        value: "5173"
+      - key: DATA_DIR
+        value: /data
+      - key: DIRECTOR_MODEL
+        value: claude-opus-5-5
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: RENDER_WORKERS
+        value: "1"
+      # Nhập tay trên dashboard khi tạo (không commit):
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+    disk:
+      name: ems-data
+      mountPath: /data
+      sizeGB: 10
