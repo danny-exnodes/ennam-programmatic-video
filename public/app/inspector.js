@@ -169,6 +169,8 @@ function renderFields(box, p, sh) {
     } else if (d.type === 'image') {
       const names = media.map((a) => a.name);
       const opts = media.map((a) => h('option', { value: a.name, selected: a.name === cur }, (a.type === 'video' ? '🎬 ' : '🖼 ') + a.name));
+      // Brand Kit logo (#8): asset 'brand-logo', not part of the project's materials
+      if (p.brand?.kit?.logo) { names.unshift('brand-logo'); opts.unshift(h('option', { value: 'brand-logo', selected: cur === 'brand-logo' }, `🏷 brand-logo (logo kit ${p.brand.kit.name})`)); }
       if (cur && !names.includes(String(cur))) opts.unshift(h('option', { value: String(cur), selected: true }, `${cur} (không có trong Chất liệu)`));
       if (!cur) opts.unshift(h('option', { value: '', selected: true }, '— chọn chất liệu —'));
       ctl = h('select', {}, opts);

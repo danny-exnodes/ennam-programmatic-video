@@ -5,7 +5,8 @@ import { api } from './api.js';
 import { engine, refresh, draw, toggle, pause, setPreviewScale, stopAllAudio } from './player.js';
 import { renderTimeline, initTimeline, fitTimeline } from './timeline.js';
 import { renderInspector } from './inspector.js';
-import { renderPanel, playExport, migrateLegacyBrief } from './panels.js';
+import { renderPanel, playExport, migrateLegacyBrief, reloadBrand } from './panels.js';
+import { showBrandKits } from './brands.js';
 import { initAuthUI, whoLabel } from './account.js';
 
 const $ = (id) => document.getElementById(id);
@@ -106,6 +107,7 @@ $('previewQuality').onchange = (e) => setPreviewScale(Number(e.target.value));
 $('btnExports').onclick = () => showExports();
 $('btnExport').onclick = () => emit('export');
 $('btnUndo').onclick = () => showHistory();
+$('btnBrands').onclick = () => showBrandKits({ onChange: () => { reloadBrand(); if (state.tab === 'style' || state.view === 'projects') renderPanel(); } });
 $('projName').onchange = (e) => update((p) => { p.name = e.target.value.trim() || p.name; });
 document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => emit('tab', b.dataset.tab)));
 
@@ -169,7 +171,7 @@ function showExports() {
 async function showHistory() {
   const p = state.project;
   const list = await api.history(p.id);
-  const label = { 'ai-director': 'Trước khi đạo diễn sửa', 'ai-shot': 'Trước khi đạo diễn sửa shot', template: 'Trước khi dựng mẫu', 'before-restore': 'Trước khi khôi phục', brief: 'Trước khi sửa brief', save: 'Lưu' };
+  const label = { brand: 'Trước khi đổi Brand Kit', 'ai-director': 'Trước khi đạo diễn sửa', 'ai-shot': 'Trước khi đạo diễn sửa shot', template: 'Trước khi dựng mẫu', 'before-restore': 'Trước khi khôi phục', brief: 'Trước khi sửa brief', save: 'Lưu' };
   modal('Lịch sử phiên bản', list.length
     ? h('div', { class: 'list' }, list.map((x) => h('div', { class: 'item' },
       h('div', { class: 'grow' }, label[x.reason] || x.reason, h('span', { class: 'small muted' }, '  · ' + x.at.replace(/T(\d\d)-(\d\d)-(\d\d).*/, ' $1:$2:$3') + '  '), whoLabel(x.userName)),

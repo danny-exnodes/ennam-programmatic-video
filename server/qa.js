@@ -20,7 +20,21 @@ export const QA_SAFE_TOLERANCE_PX = 2;
 /** Median render time per frame (ms, inspect scale) above this → too slow. */
 export const QA_SLOW_MS = 500;
 
-export const QA_CODES = ['throw', 'black', 'blank', 'text_safe_area', 'slow'];
+export const QA_CODES = ['throw', 'black', 'blank', 'text_safe_area', 'slow', 'banned_phrase'];
+
+const escRe = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Brand Kit (#8): banned phrases found in `text` — whole-word match (a phrase is not matched inside a
+ * longer word: "rẻ" does not hit "trẻ"), case-insensitive, Unicode letters/digits as word characters.
+ */
+export function bannedHits(text, phrases = []) {
+  const src = String(text || '').normalize('NFC');
+  if (!src) return [];
+  return phrases.filter((ph) => {
+    const v = String(ph || '').trim().normalize('NFC');
+    return v && new RegExp(`(?<![\\p{L}\\p{N}])${escRe(v)}(?![\\p{L}\\p{N}])`, 'iu').test(src);
+  });
+}
 
 /** A runtime throw or a syntax error (the shot cannot run) — not just a warning like a missing asset. */
 export function isRuntimeFailure(msg) {
@@ -46,7 +60,26 @@ export function qaIssues(project, insp = {}) {
   const sx0 = W * QA_SAFE_MARGIN, sx1 = W * (1 - QA_SAFE_MARGIN);
   const sy0 = H * QA_SAFE_MARGIN, sy1 = H * (1 - QA_SAFE_MARGIN);
   const tol = QA_SAFE_TOLERANCE_PX;
+  const banned = project.brand?.kit?.bannedPhrases || [];
+  // voice lines → the shot playing when the line starts
+  const voiceAt = new Map();
+  if (banned.length) {
+    let t0 = 0;
+    const spans = project.shots.map((sh) => { const r = [sh.id, t0, t0 + (sh.duration || 0)]; t0 += sh.duration || 0; return r; });
+    for (const v of project.voice || []) {
+      const sp = spans.find(([, a, b]) => (v.start || 0) >= a && (v.start || 0) < b) || spans[spans.length - 1];
+      if (sp) voiceAt.set(sp[0], [...(voiceAt.get(sp[0]) || []), v.text]);
+    }
+  }
   for (const sh of project.shots) {
+    if (banned.length) {
+      // string scan of the shot code (field defaults, literals), the edited field values and voice lines
+      const where = [];
+      for (const ph of bannedHits(sh.code, banned)) where.push(`"${ph}" (trong code/mặc định field)`);
+      for (const [k, v] of Object.entries(sh.fields || {})) for (const ph of bannedHits(v, banned)) where.push(`"${ph}" (field "${k}")`);
+      for (const line of voiceAt.get(sh.id) || []) for (const ph of bannedHits(line, banned)) where.push(`"${ph}" (lồng tiếng)`);
+      if (where.length) add(sh.id, 'banned_phrase', `có câu chữ bị CẤM theo Brand Kit: ${[...new Set(where)].slice(0, 4).join('; ')} — diễn đạt lại, không dùng cụm này`);
+    }
     const err = insp.errors?.[sh.id];
     if (err && isRuntimeFailure(err)) add(sh.id, 'throw', String(err).split('\n').find(isRuntimeFailure));
     const samples = insp.metrics?.[sh.id]?.samples || [];
