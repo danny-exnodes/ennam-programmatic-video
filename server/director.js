@@ -34,6 +34,12 @@ export function setAnthropicClient(c) {
   client = c;
 }
 
+// Test hook: thay bước render thử headless (mặc định inspectProject qua Chromium) — null để về mặc định.
+let inspectFn = inspectProject;
+export function setInspector(fn) {
+  inspectFn = fn || inspectProject;
+}
+
 const SHOT_API_PATH = path.join(ROOT, 'docs/SHOT_API.md');
 function shotApiDoc() {
   return fs.readFileSync(SHOT_API_PATH, 'utf8');
@@ -87,6 +93,69 @@ const SHOT_TOOL = {
   input_schema: { type: 'object', properties: { summary: { type: 'string' }, shot: SHOT_SCHEMA }, required: ['summary', 'shot'] },
 };
 
+// ---- Tool cho vòng duyệt (#5b) ----
+const APPROVE_TOOL = {
+  name: 'approve_cut',
+  description: 'Chỉ dùng ở vòng duyệt: duyệt bản hiện tại Y NGUYÊN, không viết lại gì. Dùng khi contact sheet/số liệu đã đạt.',
+  input_schema: {
+    type: 'object',
+    properties: { notes: { type: 'string', description: 'Nhận xét rất ngắn (tiếng Việt, ≤ 1 câu), tuỳ chọn' } },
+  },
+};
+
+const PATCH_SHOT_SCHEMA = {
+  type: 'object',
+  description: 'Chỉ gửi id và các trường THAY ĐỔI; trường bỏ qua giữ nguyên.',
+  properties: {
+    id: { type: 'string', description: 'id shot hiện có (bắt buộc)' },
+    name: SHOT_SCHEMA.properties.name,
+    duration: SHOT_SCHEMA.properties.duration,
+    transition: SHOT_SCHEMA.properties.transition,
+    code: { type: 'string', description: 'Thân hàm mới HOÀN CHỈNH của shot (thay toàn bộ code cũ). Bỏ qua nếu code không đổi.' },
+    notes: SHOT_SCHEMA.properties.notes,
+  },
+  required: ['id'],
+};
+
+const PATCH_TOOL = {
+  name: 'patch_shots',
+  description: 'Chỉ dùng ở vòng duyệt: sửa MỘT SỐ shot theo id (chỉ các trường thay đổi), tuỳ chọn xoá/chèn shot. Shot không nhắc tới giữ nguyên byte-by-byte.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: { type: 'string', description: 'Tóm tắt thay đổi (tiếng Việt, 1 câu)' },
+      shots: { type: 'array', items: PATCH_SHOT_SCHEMA },
+      remove: { type: 'array', items: { type: 'string' }, description: 'id các shot cần xoá' },
+      insert: {
+        type: 'array',
+        description: 'Shot mới cần chèn',
+        items: {
+          type: 'object',
+          properties: {
+            after: { type: 'string', description: 'Chèn sau shot có id này; chuỗi rỗng = đầu video; bỏ qua = cuối video' },
+            shot: SHOT_SCHEMA,
+          },
+          required: ['shot'],
+        },
+      },
+      voice: CUT_TOOL.input_schema.properties.voice,
+      style: CUT_TOOL.input_schema.properties.style,
+    },
+    required: ['summary'],
+  },
+};
+
+// Mảng tools GIỐNG HỆT trong mọi request của một lần chạy (tools nằm đầu cache prefix) —
+// mỗi vòng chỉ đổi tool_choice.
+const CUT_TOOLS = Object.freeze([CUT_TOOL, APPROVE_TOOL, PATCH_TOOL]);
+const SHOT_TOOLS = Object.freeze([SHOT_TOOL, APPROVE_TOOL]);
+/** Danh sách tool cố định cho một lần chạy: cả bản dựng hoặc một shot ("Nhờ đạo diễn"). */
+export function toolsFor(shotId) {
+  return shotId ? SHOT_TOOLS : CUT_TOOLS;
+}
+/** Vòng 0: ép nộp bản đầy đủ. Vòng duyệt: đạo diễn chọn 1 tool (không gọi song song). */
+export const REVIEW_TOOL_CHOICE = Object.freeze({ type: 'any', disable_parallel_tool_use: true });
+
 // systemPrompt() chỉ phụ thuộc SHOT_API.md (+ SCENES cố định) → ghi nhớ theo mtime.
 let promptMemo = { mtime: -1, text: '' };
 export function systemPrompt() {
@@ -119,7 +188,7 @@ ${shotApiDoc()}
 
 ${examples}
 
-Luôn trả lời bằng cách gọi tool được yêu cầu. summary viết tiếng Việt.`;
+Luôn trả lời bằng cách gọi tool. Lượt đầu nộp bản đầy đủ (submit_cut / submit_shot). Các vòng duyệt sau đó: đã tốt → approve_cut (không viết lại); chỉ vài shot cần sửa → patch_shots chỉ với các shot đó và chỉ các trường thay đổi (giữ id); tái cấu trúc lớn mới dùng submit_cut. summary viết tiếng Việt.`;
 }
 
 async function assetBlocks(project) {
@@ -187,7 +256,8 @@ export function usageLine(u) {
  * (chất liệu + JSON dự án + nhiệm vụ) — các vòng sau đọc lại prefix này từ cache.
  * Không sửa `messages` gốc: bản sao nông của turn đầu mang cache_control.
  */
-export function buildRequest(messages, tool, { cache = CACHE_DEFAULT } = {}) {
+export function buildRequest(messages, tools, { cache = CACHE_DEFAULT, toolChoice } = {}) {
+  const list = Array.isArray(tools) ? tools : [tools];
   const system = [{ type: 'text', text: systemPrompt(), ...(cache ? { cache_control: EPHEMERAL } : {}) }];
   let msgs = messages;
   if (cache && messages.length && Array.isArray(messages[0].content) && messages[0].content.length) {
@@ -200,14 +270,14 @@ export function buildRequest(messages, tool, { cache = CACHE_DEFAULT } = {}) {
     model: DIRECTOR_MODEL,
     max_tokens: MAX_TOKENS,
     system,
-    tools: [tool],
-    tool_choice: { type: 'tool', name: tool.name },
+    tools: list.slice(),
+    tool_choice: toolChoice || { type: 'tool', name: list[0].name },
     messages: msgs,
   };
 }
 
-async function callTool(messages, tool, { signal, log, cache }) {
-  const stream = anthropic().messages.stream(buildRequest(messages, tool, { cache }), { signal });
+async function callTool(messages, tools, { signal, log, cache, toolChoice }) {
+  const stream = anthropic().messages.stream(buildRequest(messages, tools, { cache, toolChoice }), { signal });
   let chars = 0, lastTick = 0;
   stream.on('inputJson', (delta) => {
     chars += delta.length;
@@ -219,7 +289,7 @@ async function callTool(messages, tool, { signal, log, cache }) {
   const msg = await stream.finalMessage();
   const use = msg.content.find((c) => c.type === 'tool_use');
   if (!use) throw new Error('Đạo diễn không trả về kết quả hợp lệ');
-  return { input: use.input, message: msg, toolUseId: use.id, usage: msg.usage };
+  return { name: use.name, input: use.input || {}, message: msg, toolUseId: use.id, usage: msg.usage };
 }
 
 function applyCut(project, input) {
@@ -227,20 +297,19 @@ function applyCut(project, input) {
   const old = new Map(p.shots.map((s) => [s.id, s]));
   p.shots = (input.shots || []).map((s) => {
     const prev = s.id ? old.get(s.id) : null;
-    const shot = {
-      id: prev ? s.id : newId('s'),
-      name: s.name || 'Shot',
-      duration: Math.max(0.8, Math.min(12, Number(s.duration) || 3)),
-      transition: s.transition || { type: 'cut' },
-      code: String(s.code || ''),
-      notes: s.notes || '',
-      // keep the user's field values for shots the director kept (same id)
-      fields: prev?.fields || {},
-    };
+    const shot = newShot(s);
+    if (prev) shot.id = s.id;
+    // keep the user's field values for shots the director kept (same id)
+    shot.fields = prev?.fields || {};
     // needsReview survives only while the code is unchanged
     if (prev?.needsReview && prev.code === shot.code) shot.needsReview = prev.needsReview;
     return shot;
   });
+  applyVoiceStyle(p, input);
+  return p;
+}
+
+function applyVoiceStyle(p, input) {
   if (Array.isArray(input.voice)) {
     const oldVoice = new Map(p.voice.map((v) => [v.text.trim(), v]));
     p.voice = input.voice.map((v) => {
@@ -251,6 +320,60 @@ function applyCut(project, input) {
   if (input.style && typeof input.style === 'object') {
     p.style = { ...p.style, ...input.style, palette: { ...(p.style.palette || {}), ...(input.style.palette || {}) } };
   }
+}
+
+const clampDur = (d, fallback) => Math.max(0.8, Math.min(12, Number(d) || fallback));
+
+function newShot(s) {
+  return {
+    id: newId('s'),
+    name: s.name || 'Shot',
+    duration: clampDur(s.duration, 3),
+    transition: s.transition || { type: 'cut' },
+    code: String(s.code || ''),
+    notes: s.notes || '',
+    fields: {},
+  };
+}
+
+/**
+ * patch_shots: áp lên bản hiện tại (`base` = kết quả vòng trước). Chỉ các trường gửi lên của
+ * shot có id đã biết được đổi; id lạ bị bỏ qua (ghi log). Shot giữ nguyên object (fields của
+ * người dùng, needsReview khi code không đổi). Không bao giờ để bản dựng rỗng.
+ */
+export function applyPatch(base, input = {}, log = () => {}) {
+  const p = structuredClone(base);
+  const byId = new Map(p.shots.map((s) => [s.id, s]));
+  for (const ch of Array.isArray(input.shots) ? input.shots : []) {
+    const sh = ch && byId.get(ch.id);
+    if (!sh) { log(`patch_shots: bỏ qua shot id lạ "${ch?.id}"`); continue; }
+    if (typeof ch.name === 'string' && ch.name.trim()) sh.name = ch.name;
+    if (ch.duration != null) sh.duration = clampDur(ch.duration, sh.duration);
+    if (ch.transition && typeof ch.transition === 'object' && ch.transition.type) sh.transition = ch.transition;
+    if (typeof ch.notes === 'string') sh.notes = ch.notes;
+    if (typeof ch.code === 'string' && ch.code.trim() && ch.code !== sh.code) {
+      sh.code = ch.code;
+      delete sh.needsReview; // needsReview chỉ sống khi code không đổi
+    }
+  }
+  if (Array.isArray(input.remove) && input.remove.length) {
+    const rm = new Set();
+    for (const id of input.remove) {
+      if (byId.has(id)) rm.add(id); else log(`patch_shots: bỏ qua xoá shot id lạ "${id}"`);
+    }
+    const kept = p.shots.filter((s) => !rm.has(s.id));
+    if (kept.length || (Array.isArray(input.insert) && input.insert.length)) p.shots = kept;
+    else log('patch_shots: bỏ qua lệnh xoá vì sẽ làm bản dựng rỗng');
+  }
+  for (const ins of Array.isArray(input.insert) ? input.insert : []) {
+    if (!ins || !ins.shot || typeof ins.shot !== 'object') continue;
+    const shot = newShot(ins.shot);
+    if (ins.after === '') { p.shots.unshift(shot); continue; }
+    const at = ins.after == null ? -1 : p.shots.findIndex((s) => s.id === ins.after);
+    if (ins.after != null && at < 0) log(`patch_shots: không thấy shot "${ins.after}" để chèn sau — chèn cuối`);
+    if (at < 0) p.shots.push(shot); else p.shots.splice(at + 1, 0, shot);
+  }
+  applyVoiceStyle(p, input);
   return p;
 }
 
@@ -329,11 +452,16 @@ function describeErrors(p, errs) {
  * Run the director. Returns the updated project (not yet saved).
  * shotId: limit the edit to one shot ("Nhờ đạo diễn" in the inspector).
  */
-export async function runDirector(project, { brief, request, shotId, review = true, log = () => {}, progress = () => {}, signal, cache = CACHE_DEFAULT } = {}) {
+export async function runDirector(project, { brief, request, shotId, review = true, reviewTools = true, log = () => {}, progress = () => {}, signal, cache = CACHE_DEFAULT } = {}) {
   if (!directorAvailable()) throw new Error('Chưa cấu hình ANTHROPIC_API_KEY trên server. Dùng tab "Nhanh" hoặc "Mẫu cảnh" để dựng không cần AI.');
   progress(0.05, 'Đạo diễn đang xem chất liệu');
   const { blocks, list } = await assetBlocks(project);
-  const tool = shotId ? SHOT_TOOL : CUT_TOOL;
+  // Cùng một mảng tools cho mọi lượt (cache-safe); vòng 0 ép tool nộp bản đầy đủ, vòng duyệt
+  // cho chọn (approve_cut / patch_shots / nộp lại). reviewTools=false: hành vi cũ (ép nộp lại
+  // đầy đủ mỗi vòng) — chỉ để đo đối chứng trong scripts/director-bench.js --review.
+  const tools = toolsFor(shotId);
+  const fullTool = tools[0].name;
+  const forced = { type: 'tool', name: fullTool };
   const target = shotId ? project.shots.find((s) => s.id === shotId) : null;
   // `brief` string = legacy edit request; `brief` object = structured brief overriding project.brief.
   const legacy = typeof brief === 'string' ? brief.trim() : '';
@@ -358,17 +486,34 @@ export async function runDirector(project, { brief, request, shotId, review = tr
   }];
 
   const usage = emptyUsage();
-  const call = async () => {
-    const res = await callTool(messages, tool, { signal, log, cache });
+  const toolsUsed = [];
+  const call = async (toolChoice) => {
+    const res = await callTool(messages, tools, { signal, log, cache, toolChoice });
     const one = addUsage(usage, res.usage);
-    log(`Token lượt ${usage.rounds.length}: ${usageLine(one)}`);
+    toolsUsed.push(res.name || fullTool);
+    log(`Token lượt ${usage.rounds.length}: ${usageLine(one)} (${res.name || fullTool})`);
     return res;
+  };
+  // Áp kết quả một lượt: approve giữ nguyên `cur`; patch áp lên `cur`; nộp đầy đủ như cũ.
+  let summary = '';
+  const apply = (res, cur) => {
+    if (res.name === APPROVE_TOOL.name) {
+      log(`Đạo diễn duyệt bản hiện tại, không viết lại${res.input.notes ? ': ' + res.input.notes : ''}`);
+      return cur === project ? structuredClone(cur) : cur;
+    }
+    if (res.name === PATCH_TOOL.name && !shotId) {
+      const n = (res.input.shots?.length || 0) + (res.input.remove?.length || 0) + (res.input.insert?.length || 0);
+      log(`Đạo diễn sửa cục bộ ${n} mục (patch_shots)`);
+      if (res.input.summary) summary = summary ? `${summary} ${res.input.summary}` : res.input.summary;
+      return applyPatch(cur, res.input, log);
+    }
+    summary = res.input.summary || summary;
+    return shotId ? applyShot(project, shotId, res.input) : applyCut(project, res.input);
   };
 
   progress(0.15, 'Đạo diễn đang viết kịch bản & code shot');
-  let r = await call();
-  let next = shotId ? applyShot(project, shotId, r.input) : applyCut(project, r.input);
-  let summary = r.input.summary;
+  let r = await call(forced);
+  let next = apply(r, project);
 
   // ---- verify: syntax + headless runtime + QA metrics + visual self-review ----
   // Shots that ran without a runtime failure, newest first wins (seeded with the project as it was).
@@ -381,7 +526,7 @@ export async function runDirector(project, { brief, request, shotId, review = tr
     let sheet = null;
     let qa = {};
     if (!Object.keys(errs).length) {
-      const insp = await inspectProject(next, { framesPerShot: 3 });
+      const insp = await inspectFn(next, { framesPerShot: 3 });
       errs = insp.errors || {};
       sheet = insp.sheet;
       // runtime throws are already in errs → QA list keeps the measurable problems only
@@ -412,20 +557,21 @@ export async function runDirector(project, { brief, request, shotId, review = tr
       const parts = [];
       if (hasErr) parts.push(`Render thử báo lỗi:\n${describeErrors(next, errs)}`);
       if (hasQa) parts.push(`Số liệu QA (đo trên render thử, 3 thời điểm mỗi shot):\n${describeQa(next, qa)}`);
-      feedback.push({ type: 'text', text: `${parts.join('\n\n')}\nHãy sửa và nộp lại toàn bộ bằng tool.` });
+      feedback.push({ type: 'text', text: `${parts.join('\n\n')}\n${!reviewTools ? 'Hãy sửa và nộp lại toàn bộ bằng tool.' : shotId ? `Hãy sửa và nộp lại shot bằng ${fullTool}.` : 'Sửa bằng patch_shots chỉ với các shot có vấn đề (giữ id, chỉ gửi trường thay đổi); chỉ dùng submit_cut nếu cần dựng lại lớn.'}` });
       if (review && sheet && !hasErr) feedback.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: sheet } });
     } else {
       log('Đạo diễn đang tự duyệt contact sheet');
-      feedback.push({ type: 'text', text: 'Đây là contact sheet render thật từ code của bạn (mỗi hàng 1 shot, 3 thời điểm). Hãy tự duyệt như một đạo diễn khó tính: bố cục, độ chân thực của vật lý & chất liệu, chữ có bị che/tràn/sai dấu không, ánh sáng có nhất quán không, có khung nào trống/đen không. Nếu cần, sửa và nộp lại toàn bộ bằng tool; nếu đã tốt thì nộp lại y nguyên.' });
+      feedback.push({ type: 'text', text: 'Đây là contact sheet render thật từ code của bạn (mỗi hàng 1 shot, 3 thời điểm). Hãy tự duyệt như một đạo diễn khó tính: bố cục, độ chân thực của vật lý & chất liệu, chữ có bị che/tràn/sai dấu không, ánh sáng có nhất quán không, có khung nào trống/đen không. ' + (!reviewTools ? 'Nếu cần, sửa và nộp lại toàn bộ bằng tool; nếu đã tốt thì nộp lại y nguyên.' : shotId ? `Nếu đã tốt, gọi approve_cut (không viết lại); nếu cần sửa, nộp lại shot bằng ${fullTool}.` : 'Nếu tất cả đã tốt, gọi approve_cut (không viết lại gì). Nếu chỉ vài shot cần sửa, gọi patch_shots chỉ với các shot đó và chỉ các trường thay đổi. Chỉ dùng submit_cut khi cần tái cấu trúc lớn.') });
       feedback.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: sheet } });
     }
+    // id hiện tại (shot mới tạo ở vòng trước chưa có trong JSON dự án ở turn mở đầu) — cho patch_shots
+    if (reviewTools && !shotId) feedback.push({ type: 'text', text: `Shot hiện tại (id: tên): ${next.shots.map((x) => `${x.id}: ${x.name}`).join(' · ')}` });
     messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: r.toolUseId, content: 'Đã nhận. Kết quả kiểm tra bên dưới.' }, ...feedback] });
-    r = await call();
-    next = shotId ? applyShot(project, shotId, r.input) : applyCut(project, r.input);
-    summary = r.input.summary || summary;
+    r = await call(reviewTools ? REVIEW_TOOL_CHOICE : forced);
+    next = apply(r, next);
   }
   log(`Token cả lần chạy (${usage.rounds.length} lượt): ${usageLine(usage.total)}`);
-  next.lastDirector = { at: new Date().toISOString(), brief: ask, summary, model: DIRECTOR_MODEL, usage };
+  next.lastDirector = { at: new Date().toISOString(), brief: ask, summary, model: DIRECTOR_MODEL, usage, tools: toolsUsed };
   // structured override → keep it with the project; legacy string on an empty brief → notes
   if (!shotId && brief && typeof brief === 'object') next.brief = structured;
   else if (!shotId && legacy && !briefJson) next.brief = normalizeBrief({ notes: legacy });

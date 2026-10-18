@@ -62,14 +62,16 @@ ok('cache_control ở system + khối cuối turn mở đầu (cả 2 vòng)');
 
 assert.deepEqual(r2.system, r1.system);
 assert.deepEqual(r2.tools, r1.tools);
-assert.deepEqual(r2.tool_choice, r1.tool_choice);
+assert.deepEqual(r1.tools.map((t) => t.name), ['submit_cut', 'approve_cut', 'patch_shots'], 'mọi lượt gửi cùng bộ tools');
+assert.deepEqual(r1.tool_choice, { type: 'tool', name: 'submit_cut' }, 'vòng 0 ép submit_cut');
+assert.deepEqual(r2.tool_choice, { type: 'any', disable_parallel_tool_use: true }, 'vòng sửa cho chọn tool');
 assert.equal(r2.model, r1.model);
 assert.deepEqual(r2.messages[0], r1.messages[0], 'turn mở đầu giống hệt giữa 2 vòng');
 assert.equal(r1.messages.length, 1);
 assert.equal(r2.messages.length, 3);
 assert.equal(r2.messages[1].role, 'assistant');
 assert.equal(r2.messages[2].content[0].type, 'tool_result');
-ok('prefix (tools, system, turn mở đầu) giống hệt giữa vòng 1 và vòng 2');
+ok('prefix (tools, system, turn mở đầu) giống hệt giữa vòng 1 và vòng 2; chỉ tool_choice đổi');
 
 // Nội dung prompt không đổi: bỏ cache_control thì text khối trùng bản không cache
 const firstNoCc = r1.messages[0].content.map(({ cache_control, ...b }) => b);
