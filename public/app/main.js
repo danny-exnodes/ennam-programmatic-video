@@ -7,7 +7,7 @@ import { renderTimeline, initTimeline, fitTimeline } from './timeline.js';
 import { renderInspector } from './inspector.js';
 import { renderPanel, playExport, playPreview, migrateLegacyBrief, reloadBrand } from './panels.js';
 import { showBrandKits } from './brands.js';
-import { initAuthUI, whoLabel } from './account.js';
+import { initAuthUI, whoLabel, refreshBudgetBanner } from './account.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,6 +47,7 @@ async function openProject(id) {
 }
 
 function onJobDone(j) {
+  if (j.kind === 'director' && j.status !== 'queued' && j.status !== 'running') refreshBudgetBanner(); // #34
   if (j.projectId !== state.project?.id || j.status !== 'done') return;
   if (j.kind === 'render' && !j.result?.preview) api.get(state.project.id).then((p) => { state.project.exports = p.exports; renderPanel(); });
   else if (j.kind === 'director' && j.retryOf && j.result?.project) setProject(j.result.project);

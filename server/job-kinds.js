@@ -5,8 +5,8 @@ import * as store from './store.js';
 import { syncProjectBrand } from './brands.js';
 import { registerKind } from './jobs.js';
 import { renderProject } from './render.js';
-import { runDirector } from './director.js';
-import { recordUsage } from './usage.js';
+import { runDirector, DIRECTOR_MODEL } from './director.js';
+import { recordUsage, priceUsage } from './usage.js';
 
 /** Load a project; one that follows its Brand Kit (not locked) is moved to the kit's latest version (#8). */
 export async function loadWithBrand(projectId) {
@@ -34,11 +34,16 @@ async function saveExport(projectId, exp) {
   await store.saveProject(fresh);
 }
 
-/** Usage per user (#25): persisted on the job (`job.usage`) + one line in DATA_DIR/usage/<YYYY-MM>.jsonl. */
-async function recordDirectorUsage(ctx, total) {
+/**
+ * Usage per user (#25) + USD at write time (#34): persisted on the job (`job.usage`,
+ * `job.usageUsd`, `job.usageModel`) + one line in DATA_DIR/usage/<VN month>.jsonl.
+ * `rounds` (per-request usage) lets prompt-length price tiers apply request by request.
+ */
+async function recordDirectorUsage(ctx, total, { rounds = null, model = DIRECTOR_MODEL } = {}) {
   if (!total) return;
-  ctx.set({ usage: total });
-  await recordUsage({ userId: ctx.job.userId, projectId: ctx.job.projectId, jobId: ctx.job.id, usage: total })
+  const { usd, pricingVersion } = priceUsage({ model, usage: total, rounds });
+  ctx.set({ usage: total, usageUsd: usd, usageModel: model, pricingVersion });
+  await recordUsage({ userId: ctx.job.userId, projectId: ctx.job.projectId, jobId: ctx.job.id, usage: total, rounds, model })
     .catch((e) => console.error('[usage] ghi log usage lỗi:', e.message));
 }
 
@@ -50,6 +55,7 @@ const sleep = (ms, signal) => new Promise((res, rej) => {
 export function registerDefaultKinds() {
   registerKind('director', {
     lane: 'director',
+    paid: true, // calls a paid model → checkBudget() before every new job (#34)
     // params: { request, shotId, review } — old jobs may carry `brief` (string = legacy request);
     // the structured brief is read from the project itself (project.brief) when the job starts.
     run: async ({ brief = '', request, shotId = null, review = true }, ctx) => {
@@ -61,7 +67,8 @@ export function registerDefaultKinds() {
         if (next.lastDirector.usage) next.lastDirector.usage.userId = userId;
       }
       await store.saveProject(next, { snapshot: true, reason: shotId ? 'ai-shot' : 'ai-director', userId });
-      await recordDirectorUsage(ctx, next.lastDirector?.usage?.total);
+      const u = next.lastDirector?.usage;
+      await recordDirectorUsage(ctx, u?.total, { rounds: u?.rounds, model: next.lastDirector?.model || DIRECTOR_MODEL });
       return { project: next };
     },
   });
@@ -83,14 +90,15 @@ export function registerDefaultKinds() {
     // director-like: same lane/limit as 'director'; `steps` × `stepMs`
     registerKind('test-director', {
       lane: 'director',
-      run: async ({ steps = 3, stepMs = 200, usage = null }, ctx) => {
+      paid: true,
+      run: async ({ steps = 3, stepMs = 200, usage = null, model = DIRECTOR_MODEL }, ctx) => {
         for (let i = 1; i <= steps; i++) {
           await sleep(stepMs, ctx.signal);
           ctx.log(`bước ${i}/${steps}`);
           ctx.progress(i / steps, `bước ${i}/${steps}`);
         }
         // director-like usage record (scripts/test-auth.js checks per-user monthly aggregation)
-        if (usage) await recordDirectorUsage(ctx, usage);
+        if (usage) await recordDirectorUsage(ctx, usage, { model });
         return { steps };
       },
     });
