@@ -2,6 +2,8 @@
 //   data/projects/<id>/project.json   — the editable timeline (shots are code)
 //   data/projects/<id>/assets/*       — uploaded materials (images, video, audio)
 //   data/projects/<id>/exports/*.mp4  — rendered videos
+//   data/projects/<id>/preview/*.mp4  — latest "Xem nhanh" video (not an export)
+//   data/projects/<id>/cache/*        — per-segment render cache (server/render-cache.js)
 //   data/projects/<id>/history/*.json — snapshots before each AI edit / save
 //                                       (`meta: { userId, reason, at }` first: who made the change)
 import fs from 'node:fs/promises';

@@ -29,6 +29,34 @@ async function frame(t, mb = 1, fmt = 'jpeg') {
 }
 window.__frame = frame;
 
+// Dependency trace for the per-segment render cache (server/render-cache.js): which shots
+// (timeline index) ran and which asset names were looked up while rendering a frame.
+// Read-only wrappers → pixels unchanged. `all` = something enumerated the asset map.
+const trace = { on: false, shots: new Set(), assets: new Set(), all: false };
+{
+  const rs = engine.renderShot.bind(engine);
+  engine.renderShot = (ctx, item, ...rest) => { if (trace.on) trace.shots.add(item.index); return rs(ctx, item, ...rest); };
+  const A = engine.assets;
+  const get = A.get.bind(A), has = A.has.bind(A);
+  A.get = (k) => { if (trace.on) trace.assets.add(String(k)); return get(k); };
+  A.has = (k) => { if (trace.on) trace.assets.add(String(k)); return has(k); };
+  for (const m of ['forEach', 'entries', 'keys', 'values', Symbol.iterator]) {
+    const orig = A[m].bind(A);
+    A[m] = (...a) => { if (trace.on) trace.all = true; return orig(...a); };
+  }
+  const size = Object.getOwnPropertyDescriptor(Map.prototype, 'size').get;
+  Object.defineProperty(A, 'size', { get() { if (trace.on) trace.all = true; return size.call(A); } });
+}
+window.__frameInfo = async (t, mb = 1) => {
+  trace.on = true; trace.shots.clear(); trace.assets.clear(); trace.all = false;
+  try {
+    const b64 = await frame(t, mb);
+    return { b64, shots: [...trace.shots], assets: [...trace.assets], all: trace.all };
+  } finally {
+    trace.on = false;
+  }
+};
+
 // Pixel statistics of a canvas (pre-post shot buffer), sampled on a 2px grid.
 // Luma 0..255 (Rec. 601). bright = share of pixels with luma > 20 (near-black detection).
 function lumaStats(cv) {

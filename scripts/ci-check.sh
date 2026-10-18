@@ -83,5 +83,15 @@ else
   [ $sc = 0 ] || { fail=1; echo "FAIL  test-seasonal (exit $sc)"; }
 fi
 
+# 10. Cache đoạn render (#29): bản ghép từ cache = bản render đầy đủ (ngưỡng golden, cả vùng chuyển cảnh),
+#     đổi từng loại đầu vào (code, field, chất liệu, style, fps) → đúng đoạn đó render lại, xoá cache giữa
+#     chừng vẫn xuất được, LRU, Xem nhanh (Chromium cố định + ffmpeg, scripts/test-render-cache.js, ~30s)
+if [ -n "${SKIP_GOLDEN:-}" ]; then
+  [ -z "${CI:-}" ] && warn "bỏ qua test-render-cache (SKIP_GOLDEN=1)"
+else
+  node scripts/test-render-cache.js; rc=$?
+  [ $rc = 0 ] || { fail=1; echo "FAIL  test-render-cache (exit $rc)"; }
+fi
+
 [ $fail = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
 exit $fail

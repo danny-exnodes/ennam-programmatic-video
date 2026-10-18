@@ -29,6 +29,9 @@ jobs:
       # npm cache (setup-node) also covers @sparticuz/chromium, the pinned
       # Chromium binary that golden-frame tests render with (scripts/golden.js)
       - run: npm ci --no-audit --no-fund
+      # export pipeline tests (scripts/test-render-cache.js) need ffmpeg/ffprobe
+      - name: ffmpeg
+        run: command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg)
       - name: Quality gate
         env:
           BASE: origin/${{ github.base_ref || 'main' }}

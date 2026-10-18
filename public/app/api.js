@@ -34,6 +34,8 @@ export const api = {
   tts: (id, lineId, voice) => req('POST', `/api/projects/${id}/voice/${lineId}/tts`, { voice }),
   director: (id, b) => req('POST', `/api/projects/${id}/director`, b),
   render: (id, quality) => req('POST', `/api/projects/${id}/render`, { quality }),
+  cacheStats: (id) => req('GET', `/api/projects/${id}/cache`),
+  clearCache: (id) => req('DELETE', `/api/projects/${id}/cache`),
   deleteExport: (id, file) => req('DELETE', `/api/projects/${id}/exports/${encodeURIComponent(file)}`),
   job: (jid) => req('GET', `/api/jobs/${jid}`),
   jobs: (pid) => req('GET', `/api/jobs?project=${pid}`),
@@ -58,3 +60,4 @@ export const api = {
 };
 export const fileUrl = (p, a) => `/files/${p.id}/assets/${encodeURIComponent(a.file)}`;
 export const exportUrl = (p, f, dl) => `/files/${p.id}/exports/${encodeURIComponent(f)}${dl ? '?download=1' : ''}`;
+export const previewUrl = (p, f) => `/files/${p.id}/preview/${encodeURIComponent(f)}`;
