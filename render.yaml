@@ -6,7 +6,7 @@ services:
     runtime: docker
     plan: standard
     region: singapore
-    healthCheckPath: /engine/engine.js
+    healthCheckPath: /api/auth/status  # route công khai; /engine nằm sau đăng nhập khi đặt APP_PASSWORD
     envVars:
       - key: PORT
         value: "5173"
