@@ -4,7 +4,7 @@ import { state, on, emit, update, duration, shotStarts, trackJob, retryJob, setP
 import { api, fileUrl, exportUrl, previewUrl } from './api.js';
 import { engine } from './player.js';
 import { MATERIALS, GRADES, ICON_NAMES } from '/engine/engine.js';
-import { whoLabel } from './account.js';
+import { whoLabel, refreshBudgetBanner } from './account.js';
 import { kitPicker, kitSwatches, showBrandKits, ROLE_LABEL } from './brands.js';
 
 const panel = document.getElementById('panel');
@@ -182,6 +182,7 @@ function director() {
         const job = await api.director(p.id, { brief: p.brief || {}, request: p.shots.length ? ask.value : '' });
         trackJob(job, (j) => {
           btn.disabled = false;
+          refreshBudgetBanner(); // #34: usage grew — banner at ≥ 80 %
           if (j.status === 'done') {
             pendingAsk.delete(p.id);
             setProject(j.result.project, { keepSelection: false });
@@ -191,6 +192,7 @@ function director() {
       } catch (e) {
         btn.disabled = false;
         toast(e.message, { error: true });
+        refreshBudgetBanner(); // 402 "Đã hết hạn mức tháng — liên hệ admin" → show the banner too
       }
     },
   }, p.shots.length ? '🎬 Nhờ đạo diễn sửa' : '🎬 Nhờ đạo diễn dựng');

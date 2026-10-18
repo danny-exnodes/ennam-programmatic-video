@@ -16,7 +16,8 @@ import { directorAvailable, DIRECTOR_MODEL } from './director.js';
 import { synthesize, ttsAvailable, listVoices } from './tts.js';
 import { TEMPLATES, SEASONS, SEASONAL_SCENES, buildFromTemplate } from './templates.js';
 import * as auth from './auth.js';
-import { monthUsage, listMonths, monthOf } from './usage.js';
+import { monthUsage, listMonths, monthOf, currentPricing } from './usage.js';
+import * as budget from './budget.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT || 5173);
@@ -58,9 +59,13 @@ app.post('/api/account/password', auth.requireUser, wrap(async (req, res) => {
 }));
 app.get('/api/account/usage', auth.requireUser, (req, res) => {
   const month = req.query.month || monthOf();
-  const row = monthUsage(month, listJobs()).find((r) => r.userId === req.user.id);
-  res.json({ month, jobs: row?.jobs || 0, total: row?.total || null });
+  const rows = monthUsage(month, listJobs());
+  const row = rows.find((r) => r.userId === req.user.id);
+  const b = budget.budgetStatus(req.user.id, { month, rows });
+  res.json({ month, jobs: row?.jobs || 0, total: row?.total || null, usd: row?.usd || 0, usdEstimated: !!row?.usdEstimated, warn: b.warn, budget: b });
 });
+// Budget of the caller (user, or "Chung" when not signed in to an account) — main-page banner (#34)
+app.get('/api/budget', (req, res) => res.json(budget.budgetStatus(uid(req))));
 
 // --- admin: users + usage per user per month ---
 app.get('/api/admin/users', auth.requireAdmin, (_req, res) => res.json(auth.listUsers()));
@@ -85,12 +90,41 @@ app.post('/api/admin/users/:uid/password', auth.requireAdmin, wrap(async (req, r
 app.get('/api/admin/usage', auth.requireAdmin, wrap(async (req, res) => {
   const month = req.query.month || monthOf();
   const users = new Map(auth.listUsers().map((u) => [u.id, u]));
-  const rows = monthUsage(month, listJobs()).map((r) => ({
+  const usage = monthUsage(month, listJobs());
+  const cfg = budget.readBudgets();
+  const rows = usage.map((r) => ({
     ...r, username: users.get(r.userId)?.username || null, name: users.get(r.userId)?.name || null,
+    budget: budget.budgetStatus(r.userId, { month, cfg, rows: usage }),
   }));
+  // current month: also list people / "Chung" who have a limit but no usage yet (so admin sees 0 %)
+  if (month === monthOf()) {
+    for (const u of users.values()) {
+      if (rows.some((r) => r.userId === u.id)) continue;
+      const b = budget.budgetStatus(u.id, { month, cfg, rows: usage });
+      if (b.limit != null) rows.push({ userId: u.id, jobs: 0, total: null, usd: 0, username: u.username, name: u.name, budget: b });
+    }
+    if (!rows.some((r) => r.userId === null) && cfg.shared != null) rows.push({ userId: null, jobs: 0, total: null, usd: 0, username: null, name: null, budget: budget.budgetStatus(null, { month, cfg, rows: usage }) });
+  }
   const months = await listMonths();
   if (!months.includes(monthOf())) months.unshift(monthOf());
-  res.json({ month, months, rows });
+  const p = currentPricing();
+  res.json({ month, months, rows, currentMonth: monthOf(), pricing: { version: p.version, source: p.source || null, verifiedAt: p.verifiedAt || null } });
+}));
+// --- admin: AI cost budgets (#34) — config, raises ("Nới hạn mức") with log ---
+app.get('/api/admin/budgets', auth.requireAdmin, (req, res) => {
+  const month = req.query.month || monthOf();
+  res.json({ config: budget.readBudgets(), month, raises: budget.readRaises(month).reverse(), warnAt: budget.WARN_AT });
+});
+app.put('/api/admin/budgets', auth.requireAdmin, wrap(async (req, res) => {
+  const cfg = await budget.updateBudgets(req.body || {}, req.user);
+  console.log(`[budget] ${req.user.username} cập nhật hạn mức: ${JSON.stringify(req.body || {})}`);
+  res.json({ config: cfg });
+}));
+app.post('/api/admin/budgets/raise', auth.requireAdmin, wrap(async (req, res) => {
+  const { userId = null, amount, reason } = req.body || {};
+  const line = await budget.raiseBudget({ userId, amount, reason }, req.user);
+  console.log(`[budget] ${req.user.username} nới hạn mức ${userId || '"Chung"'} +$${line.amount} (${line.month})`);
+  res.json({ raise: line, budget: budget.budgetStatus(line.userId) });
 }));
 
 // --- static ---
@@ -343,6 +377,7 @@ app.post('/api/projects/:id/voice/:lineId/tts', wrap(async (req, res) => {
 // changed) or a plain string (legacy: the edit request). `request`: free-text edit request.
 app.post('/api/projects/:id/director', wrap(async (req, res) => {
   const p = await store.loadProject(req.params.id);
+  budget.assertBudget(uid(req), 'director');
   const { brief = '', request, shotId = null, review = true } = req.body || {};
   let ask = typeof request === 'string' ? request : '';
   if (typeof brief === 'string') ask = ask || brief;
@@ -395,6 +430,8 @@ app.get('/api/jobs/:id', (req, res) => {
 app.post('/api/jobs/:id/cancel', (req, res) => res.json({ ok: cancelJob(req.params.id) }));
 // "Chạy lại": new job with the same kind + params (interrupted / error / cancelled jobs)
 app.post('/api/jobs/:id/retry', (req, res) => {
+  const old = getJob(req.params.id);
+  if (old) budget.assertBudget(uid(req), old.kind); // paid kinds only (#34)
   const j = retryJob(req.params.id, { userId: uid(req) });
   if (!j) return res.status(404).json({ error: 'Không có job' });
   res.json(pub(j));
@@ -451,6 +488,7 @@ if (process.env.JOBS_TEST_KINDS === '1') {
   app.post('/api/test/jobs', (req, res) => {
     const { kind, projectId = 'test', params = {} } = req.body || {};
     if (!/^test-/.test(kind || '') || !hasKind(kind)) return res.status(400).json({ error: 'kind không hợp lệ' });
+    budget.assertBudget(uid(req), kind);
     res.json(pub(createJob(kind, projectId, params, { userId: uid(req) })));
   });
 }
@@ -464,7 +502,7 @@ app.use((err, req, res, _next) => {
   }
   if ((err.status || 500) >= 500) console.error(err);
   else console.warn(`[http] ${req.method} ${req.path} → ${err.status} ${err.message}`);
-  res.status(err.status || 500).json({ error: err.message || String(err) });
+  res.status(err.status || 500).json({ error: err.message || String(err), ...(err.code ? { code: err.code } : {}), ...(err.budget ? { budget: err.budget } : {}) });
 });
 
 function validateProject(p) {
