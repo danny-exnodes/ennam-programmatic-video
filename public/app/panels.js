@@ -4,7 +4,7 @@ import { state, on, emit, update, duration, shotStarts, trackJob, retryJob, setP
 import { api, fileUrl, exportUrl, previewUrl } from './api.js';
 import { engine } from './player.js';
 import { MATERIALS, GRADES, ICON_NAMES } from '/engine/engine.js';
-import { whoLabel } from './account.js';
+import { whoLabel, refreshBudgetBanner } from './account.js';
 import { kitPicker, kitSwatches, showBrandKits, ROLE_LABEL } from './brands.js';
 
 const panel = document.getElementById('panel');
@@ -182,6 +182,7 @@ function director() {
         const job = await api.director(p.id, { brief: p.brief || {}, request: p.shots.length ? ask.value : '' });
         trackJob(job, (j) => {
           btn.disabled = false;
+          refreshBudgetBanner(); // #34: usage grew — banner at ≥ 80 %
           if (j.status === 'done') {
             pendingAsk.delete(p.id);
             setProject(j.result.project, { keepSelection: false });
@@ -191,6 +192,7 @@ function director() {
       } catch (e) {
         btn.disabled = false;
         toast(e.message, { error: true });
+        refreshBudgetBanner(); // 402 "Đã hết hạn mức tháng — liên hệ admin" → show the banner too
       }
     },
   }, p.shots.length ? '🎬 Nhờ đạo diễn sửa' : '🎬 Nhờ đạo diễn dựng');
@@ -356,10 +358,11 @@ function seasonChips(onChange) {
     onclick: () => { seasonFilter = v; onChange(); },
   }, label)));
 }
-/** Màu mặc định trên form theo mùa: màu "accent" của Brand Kit (field dùng brandColor) hoặc mặc định của bộ mẫu. */
+/** Màu mặc định trên form theo mùa: màu Brand Kit theo vai trò `brandColor` của field (vd. accent, primary) hoặc mặc định của bộ mẫu. */
 function seasonColorDefault(season, key) {
-  const kitAccent = key === 'accent' && state.project?.brand?.kit?.palette?.find((c) => c.role === 'accent')?.color;
-  return kitAccent || season?.defaults?.[key] || '#d9b45f';
+  const role = season?.fields?.find((f) => f.key === key)?.brandColor || (key === 'accent' ? 'accent' : null);
+  const kitColor = role && state.project?.brand?.kit?.palette?.find((c) => c.role === role)?.color;
+  return kitColor || season?.defaults?.[key] || '#d9b45f';
 }
 const seasonName = (id) => (state.config.seasons || []).find((x) => x.id === id)?.name || id;
 
@@ -445,6 +448,7 @@ const SCENE_LIST = [
   ['drip', 'Giọt từ ống nhỏ giọt', 'Giọt căng, thắt cổ, rơi theo chu kỳ'],
   ['cta', 'Kêu gọi hành động', 'Sản phẩm + tiêu đề + nút CTA'],
   ['kenburns', 'Ảnh chuyển động', 'Camera đẩy chậm, bụi, light leak, chú thích'],
+  ['sunset', 'Hoàng hôn', 'Trời vật lý, mây 2 lớp ánh nắng, mặt nước phản chiếu'],
 ];
 function scenes() {
   const p = state.project;

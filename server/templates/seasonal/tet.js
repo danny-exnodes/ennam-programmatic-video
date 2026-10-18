@@ -41,7 +41,7 @@ export const FORM_FIELDS = [
   { key: 'wish', label: 'Lời chúc phụ', maxLength: 44 },
   { key: 'date', label: 'Ngày giờ', maxLength: 52 },
   { key: 'venue', label: 'Địa điểm', maxLength: 72 },
-  { key: 'accent', label: 'Màu nhấn (vàng kim)', type: 'color' },
+  { key: 'accent', label: 'Màu nhấn (vàng kim)', type: 'color', brandColor: 'accent' },
   { key: 'red', label: 'Màu nền (đỏ son)', type: 'color' },
 ];
 const MAXLEN = Object.fromEntries(FORM_FIELDS.map((f) => [f.key, f.maxLength]));
@@ -57,8 +57,9 @@ const F = {
   wish: (o) => tf('wish', 'wish', o.wish ?? DEFAULTS.wish, 'Lời chúc phụ'),
   date: (o) => tf('date', 'date', o.date ?? DEFAULTS.date, 'Ngày giờ'),
   venue: (o) => tf('venue', 'venue', o.venue ?? DEFAULTS.venue, 'Địa điểm'),
-  logo: () => `const logo = s.field('logo', '', { type: 'image', label: 'Logo (tuỳ chọn, tên chất liệu)' });`,
-  colors: (o) => `const accent = s.field('accent', ${J(o.accent ?? DEFAULTS.accent)}, { type: 'color', label: 'Màu nhấn (vàng kim)' });
+  // Brand Kit (#36): logo mặc định = logo của kit (nếu có); màu nhấn mặc định = màu "accent" của kit (không có kit → giữ nguyên)
+  logo: () => `const logo = s.field('logo', s.brand.logo || '', { type: 'image', label: 'Logo (tuỳ chọn, tên chất liệu)' });`,
+  colors: (o) => `const accent = s.field('accent', ${J(o.accent ?? DEFAULTS.accent)}, { type: 'color', label: 'Màu nhấn (vàng kim)', brandColor: 'accent' });
 const red = s.field('red', ${J(o.red ?? DEFAULTS.red)}, { type: 'color', label: 'Màu nền (đỏ son)' });`,
 };
 
@@ -458,8 +459,8 @@ if (fade > 0) s.world((c) => { c.fillStyle = 'rgba(0,0,0,' + (fade * 0.85).toFix
 ${HEAD}
 ${F.company(o)}
 ${F.greeting(o)}
-${tf('right', 'couplet_right', o.couplet_right ?? 'An Khang Thịnh Vượng', 'Câu đối phải (đọc trước)', 28)}
-${tf('left', 'couplet_left', o.couplet_left ?? 'Vạn Sự Như Ý', 'Câu đối trái', 28)}
+${tf('right', 'couplet_right', o.couplet_right ?? 'An Khang Thịnh Vượng', 'Vế phải (đọc trước)', 28)}
+${tf('left', 'couplet_left', o.couplet_left ?? 'Vạn Sự Như Ý', 'Vế trái', 28)}
 ${tf('message', 'message', o.message ?? 'Kính chúc Quý khách hàng & đối tác một năm mới *an khang, thịnh vượng*', 'Lời chúc ở giữa', 90)}
 ${F.year(o)}
 ${F.colors(o)}

@@ -144,6 +144,30 @@ sc.render();      // vẽ theo đúng thứ tự: trời → bờ → phản chi
 Mẹo: quay chậm bằng `time` (ví dụ `time: T0 - 0.12 + 0.2 * s.t`), cả lá, nước, gió đều chậm theo. Hai shot dùng chung `wind` + `leaf` sẽ cho cùng một giọt nước — dùng `s.nature({ wind }).leaf(LEAF).impact[0]` để biết thời điểm chạm nước. Xem ví dụ đầy đủ ở `examples/nature/`.
 Không dùng `s.camera(...)` 2D cho cảnh nature; chuyển động camera đặt trong `camera` của `s.nature`.
 
+### Trời vật lý theo giờ trong ngày — `timeOfDay` (không cần mã màu)
+Chỉ cần chọn giờ: màu trời, chân trời, quầng & đĩa mặt trời, màu nắng, phơi sáng đều được **tính** từ tán xạ khí quyển (Rayleigh + Mie + ozone). Mây 2 lớp (tích thấp + ti cao) tự đổ bóng, viền sáng khi ngược nắng, nhuộm theo màu nắng, trôi theo gió. Áp dụng cho `sc.sky()` và `sc.landscape()`; mặt nước phản chiếu đúng trời đó.
+```js
+const sc = s.nature({
+  timeOfDay: 'sunset',                 // 'dawn' | 'morning' | 'noon' | 'golden' | 'sunset' | 'blue'
+  sky: { model: 'physical', haze: 0.45, clouds: { cover: 0.4, low: 1, high: 0.4, speed: 1 } },
+  sun: { azimuth: 0.2 },               // hướng mặt trời; camera yaw ≈ azimuth = nhìn ngược sáng
+  camera: { ... }, wind: { ... },
+});
+sc.sky();   // hoặc sc.landscape({...})
+```
+| Preset | Mặt trời | Hình ảnh |
+|---|---|---|
+| `dawn` | −1° (sắp mọc) | trời hồng tím, mây hồng |
+| `morning` | 16° | xanh trong, mây trắng |
+| `noon` | 62° | xanh đậm, nắng trắng |
+| `golden` | 6° | giờ vàng, nắng vàng ấm, bóng dài |
+| `sunset` | 1° | chân trời cam–hồng, mây cam rực |
+| `blue` | −5° (sau lặn) | giờ xanh: trời xanh thẫm, không có nắng trực tiếp |
+- `timeOfDay` (hoặc `sky.model: 'physical'`) bật trời vật lý; không có thì giữ trời 2 màu `sky: { top, horizon }` như cũ.
+- `sun.elevation` (rad, −0.07…1.2) ghi đè độ cao của preset — kéo dần trong shot để làm time-lapse. `sun.color` / `sun.intensity` mặc định lấy theo khí quyển (đặt tay sẽ ghi đè).
+- `sky.haze` 0..1 (độ mù/bụi; cao → chân trời trắng đục, hoàng hôn đỏ hơn). `sky.clouds`: `cover` 0..1 (tỉ lệ trời có mây tích), `low` 0..2 (độ dày mây tích), `high` 0..1 (lượng mây ti), `speed` (hệ số trôi theo `wind`), `seed`; `clouds: false` = trời quang. `sc.sky({ clouds })` cũng đặt được.
+- Không viết mã màu trời khi dùng preset. Muốn hoàng hôn ngược sáng: `sun.azimuth` gần `camera.yaw` (mặt trời trong khung); muốn mây được nắng chiếu: quay lưng lại mặt trời.
+
 ### Thiên nhiên 3D — phần mở rộng (núi rừng, đá suối, lá tiền cảnh, chim én, chai sản phẩm)
 | Hàm | Ý nghĩa & tham số |
 |---|---|

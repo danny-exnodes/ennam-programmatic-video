@@ -1,0 +1,17 @@
+{
+  "version": "2026-10-18",
+  "currency": "USD",
+  "unit": "USD per million tokens (MTok)",
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "verifiedAt": "2026-10-18",
+  "notes": "Giá chuẩn (không batch, không inference_geo). cacheWrite5m = ghi cache TTL 5 phút (đạo diễn dùng cache_control ephemeral mặc định 5 phút); cacheRead = cache hits & refreshes. Haiku 5.5 tính theo độ dài prompt từng request (input + cache read + cache write): > 100.000 token dùng giá longContext. Đổi giá: sửa file này và tăng version, hoặc ghi đè bằng DATA_DIR/pricing.json (không cần deploy).",
+  "models": {
+    "claude-opus-5-5": { "label": "Claude Opus 5.5", "input": 4, "output": 20, "cacheWrite5m": 5, "cacheRead": 0.2, "verified": true },
+    "claude-sonnet-5-5": { "label": "Claude Sonnet 5.5", "input": 2, "output": 10, "cacheWrite5m": 2.5, "cacheRead": 0.1, "verified": true },
+    "claude-haiku-5-5": {
+      "label": "Claude Haiku 5.5", "input": 0.1, "output": 0.5, "cacheWrite5m": 0.125, "cacheRead": 0.01, "verified": true,
+      "longContext": { "thresholdPromptTokens": 100000, "input": 0.5, "output": 2.5, "cacheWrite5m": 0.625, "cacheRead": 0.05 }
+    },
+    "claude-fable-5-1": { "label": "Claude Fable 5.1", "input": 10, "output": 50, "cacheWrite5m": 12.5, "cacheRead": 0.25, "verified": true }
+  }
+}

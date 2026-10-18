@@ -18,6 +18,7 @@ import { makeWaves, getWaveSim, renderWater, waveHeight } from './water.js';
 import { simulateLeaves, sampleLeaf, leafFrame, drawLeaf3D, simulateReeds, drawReeds, add, scl } from './foliage.js';
 import { renderLeafGL } from './leafgl.js';
 import { renderLandscape, lightShafts } from './landscape.js';
+import { physicalSkyOptions, getAtmosphere, renderPhysSky, derivedSkyColors } from './sky.js';
 import { renderRocksGL } from './rockgl.js';
 import { renderCutouts } from './cutoutgl.js';
 import { compositeBottle } from './bottle.js';
@@ -74,13 +75,23 @@ export function natureScene(s, eng, o = {}) {
   const cam = makeCamera(o.camera || {}, W, H);
   const wind = makeWind({ until, ...(o.wind || {}) });
   const so = o.sun || {};
-  const el = so.elevation ?? 0.32, az = so.azimuth ?? -0.45; // world azimuth (0 = +Z)
+  // physical sky (timeOfDay / sky.model 'physical'); null → legacy 2-colour sky, unchanged
+  const phys = physicalSkyOptions(o);
+  const el = so.elevation ?? (phys ? phys.elevation : 0.32), az = so.azimuth ?? -0.45; // world azimuth (0 = +Z)
   const sun = {
     dir: [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)],
     color: so.color ?? '#fff0d0',
     intensity: so.intensity ?? 1,
     translucency: so.translucency ?? 1,
   };
+  let physInfo = null;
+  if (phys) {
+    physInfo = { cam, sun, wind, time, atmo: getAtmosphere(el, phys.haze), clouds: phys.clouds === undefined ? {} : phys.clouds, opt: phys };
+    const dc = derivedSkyColors(physInfo);
+    if (so.color == null) sun.color = dc.sunColor;
+    if (so.intensity == null) sun.intensity = dc.sunIntensity;
+    physInfo.derived = dc;
+  }
   const sp = cam.project(cam.pos[0] + sun.dir[0] * 1e4, cam.pos[1] + sun.dir[1] * 1e4, cam.pos[2] + sun.dir[2] * 1e4);
   sun.screen = sp[2] > 0 ? [sp[0], sp[1]] : null;
   {
@@ -90,7 +101,9 @@ export function natureScene(s, eng, o = {}) {
     const n = Math.hypot(lx, ly) || 1;
     sun.screenDir = { x: lx / n, y: ly / n };
   }
-  const sky = { top: '#7fa6c8', horizon: '#e9e2c8', ...(o.sky || {}) };
+  const sky = physInfo
+    ? { ...(o.sky || {}), top: o.sky?.top ?? physInfo.derived.top, horizon: o.sky?.horizon ?? physInfo.derived.horizon }
+    : { top: '#7fa6c8', horizon: '#e9e2c8', ...(o.sky || {}) };
   const P = (x, y, z) => cam.project(x, y, z);
   const PM = (x, y, z) => cam.project(x, -y, z);
   const hy = cam.horizonY();
@@ -113,6 +126,11 @@ export function natureScene(s, eng, o = {}) {
     sky(opt = {}) {
       const so2 = { ...sky, ...opt };
       Object.assign(sky, so2);
+      if (physInfo) {
+        if (opt.clouds !== undefined) physInfo.clouds = opt.clouds === false ? null : typeof opt.clouds === 'object' ? opt.clouds : { cover: +opt.clouds };
+        backdrops.push({ z: Infinity, phys: true, opt });
+        return sc;
+      }
       backdrops.push({ z: Infinity, draw: (c, mirror) => drawSky(c, W, H, hy, so2, sun, time, mirror) });
       return sc;
     },
@@ -223,10 +241,17 @@ export function natureScene(s, eng, o = {}) {
     // ---- backdrops (sky, far bank) ----
     backdrops.sort((a, b) => b.z - a.z);
     for (const b of backdrops) {
+      if (b.phys) {
+        const pb = ((b.opt.blur ?? phys.blur ?? 0) + cam.blurAt(1e4)) * scale;
+        const po = { res: b.opt.res ?? phys.res, renderer: b.opt.renderer ?? phys.renderer };
+        renderPhysSky(ctx, physInfo, false, pw, ph, pb, po);
+        renderPhysSky(rc, physInfo, true, rw, rh, pb * rk * 1.2, po);
+        continue;
+      }
       if (b.landscape) {
         const fz = b.opt.forestZ ?? 18;
         const lb = (b.opt.blur ?? 0) + cam.blurAt(Math.max(1, fz - cam.pos[2]));
-        const sceneInfo = { cam, sun, sky, time, scale, wind };
+        const sceneInfo = physInfo ? { cam, sun, sky, time, scale, wind, phys: physInfo } : { cam, sun, sky, time, scale, wind };
         renderLandscape(ctx, sceneInfo, b.opt, false, pw, ph, lb * scale);
         renderLandscape(rc, sceneInfo, b.opt, true, rw, rh, lb * scale * rk * 1.2);
         continue;

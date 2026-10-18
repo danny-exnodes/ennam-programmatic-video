@@ -74,6 +74,11 @@ export const api = {
   updateUser: (uid, b) => req('PATCH', `/api/admin/users/${uid}`, b),
   resetPassword: (uid, password) => req('POST', `/api/admin/users/${uid}/password`, { password }),
   usage: (month) => req('GET', `/api/admin/usage${month ? `?month=${month}` : ''}`),
+  // AI cost budgets (issue #34)
+  budget: () => req('GET', '/api/budget'),
+  budgets: () => req('GET', '/api/admin/budgets'),
+  updateBudgets: (b) => req('PUT', '/api/admin/budgets', b),
+  raiseBudget: (b) => req('POST', '/api/admin/budgets/raise', b),
 };
 export const brandFileUrl = (kitId, file) => `/brands/${kitId}/files/${encodeURIComponent(file)}`;
 export const fileUrl = (p, a) => `/files/${p.id}/assets/${encodeURIComponent(a.file)}`;
