@@ -356,10 +356,11 @@ function seasonChips(onChange) {
     onclick: () => { seasonFilter = v; onChange(); },
   }, label)));
 }
-/** Màu mặc định trên form theo mùa: màu "accent" của Brand Kit (field dùng brandColor) hoặc mặc định của bộ mẫu. */
+/** Màu mặc định trên form theo mùa: màu Brand Kit theo vai trò `brandColor` của field (vd. accent, primary) hoặc mặc định của bộ mẫu. */
 function seasonColorDefault(season, key) {
-  const kitAccent = key === 'accent' && state.project?.brand?.kit?.palette?.find((c) => c.role === 'accent')?.color;
-  return kitAccent || season?.defaults?.[key] || '#d9b45f';
+  const role = season?.fields?.find((f) => f.key === key)?.brandColor || (key === 'accent' ? 'accent' : null);
+  const kitColor = role && state.project?.brand?.kit?.palette?.find((c) => c.role === role)?.color;
+  return kitColor || season?.defaults?.[key] || '#d9b45f';
 }
 const seasonName = (id) => (state.config.seasons || []).find((x) => x.id === id)?.name || id;
 

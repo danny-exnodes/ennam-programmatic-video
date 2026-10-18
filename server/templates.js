@@ -4,6 +4,7 @@
 import { newId } from './store.js';
 import * as yearend from './templates/seasonal/yearend.js';
 import * as tet from './templates/seasonal/tet.js';
+import * as opening from './templates/seasonal/opening.js';
 
 const J = (v) => JSON.stringify(v);
 
@@ -204,7 +205,7 @@ const BASE_TEMPLATES = [
 
 // Seasonal bundles ("Theo mùa"): server/templates/seasonal/*.js. Their scenes are kept
 // out of SCENES on purpose — director.js builds its cached system prompt from SCENES.
-const SEASONAL = [yearend, tet];
+const SEASONAL = [yearend, tet, opening];
 export const SEASONS = SEASONAL.map((m) => ({ ...m.SEASON, fields: m.FORM_FIELDS, defaults: m.DEFAULTS }));
 export const SEASONAL_SCENES = Object.fromEntries(SEASONAL.flatMap((m) =>
   Object.entries(m.SCENES).map(([k, v]) => [k, { ...v, season: m.SEASON.id }])));

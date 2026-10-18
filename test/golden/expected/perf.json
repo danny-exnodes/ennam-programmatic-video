@@ -30,6 +30,10 @@
     "tet": {
       "msPerFrame": 14.32,
       "norm": 0.2057
+    },
+    "opening": {
+      "msPerFrame": 18.48,
+      "norm": 0.3101
     }
   }
 }
