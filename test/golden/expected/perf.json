@@ -26,6 +26,10 @@
     "yearend": {
       "msPerFrame": 16.18,
       "norm": 0.2597
+    },
+    "tet": {
+      "msPerFrame": 14.32,
+      "norm": 0.2057
     }
   }
 }

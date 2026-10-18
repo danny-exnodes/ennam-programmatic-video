@@ -8,7 +8,8 @@
 // qaIssues) in the pinned Chromium on a temp server. Must raise no issue (runtime throw,
 // black, blank, text outside the 6% safe area, slow). Static checks: every s.text-style call
 // has maxWidth, form values prefill shot.fields, the director system prompt does not
-// contain seasonal scenes (prompt cache stays stable).
+// contain seasonal scenes (prompt cache stays stable). Tết (24b): year/can-chi field, NFC text,
+// and the longest form values still pass QA at both aspects.
 // Exit code: 0 pass, 1 fail, 2 setup error. Non-Linux: skipped locally, FAIL on CI (like golden).
 import assert from 'node:assert/strict';
 import fsp from 'node:fs/promises';
@@ -65,6 +66,21 @@ async function statics(T) {
     assert.ok(p.shots.length > 0);
     for (const s of p.shots) { assert.equal(s.fields.company, 'Công ty TNHH Hoa Sen'); assert.equal('venue' in s.fields, false); }
   });
+  // Tết (24b): năm/can chi là trường sửa được, mặc định Tết 2027 = Xuân Đinh Mùi; chữ tiếng Việt dạng NFC.
+  check('Tết: mặc định "Xuân Đinh Mùi 2027", trường year/accent/red có trong mọi cảnh, đổi năm qua form', () => {
+    const tet = T.SEASONS.find((x) => x.id === 'tet');
+    assert.ok(tet, 'thiếu bộ tet');
+    assert.equal(tet.defaults.year, 'Xuân Đinh Mùi 2027');
+    for (const v of Object.values(tet.defaults)) assert.equal(v, v.normalize('NFC'), `chưa NFC: ${v}`);
+    for (const [k, sc] of Object.entries(T.SEASONAL_SCENES).filter(([, v]) => v.season === 'tet')) {
+      const code = sc.code({});
+      for (const key of ['accent', 'red']) assert.ok(code.includes(`s.field('${key}'`), `${k}: thiếu trường ${key}`);
+      assert.equal(code, code.normalize('NFC'), `${k}: chuỗi chưa NFC`);
+    }
+    const p = T.buildFromTemplate(blank('y', 1080, 1920), { template: 'tet-led', fields: { year: 'Xuân Mậu Thân 2028' } });
+    assert.ok(p.shots.every((x) => x.fields.year === 'Xuân Mậu Thân 2028'));
+    assert.ok(p.shots.some((x) => /s\.field\("year"/.test(x.code)));
+  });
   const { systemPrompt } = await import('../server/director.js');
   check('system prompt đạo diễn không chứa cảnh theo mùa (cache ổn định)', () => {
     const sp = systemPrompt();
@@ -91,6 +107,20 @@ async function render(T) {
       if (n) bad(`${r.id} ${label}: ${n} lỗi QA\n${describeQa(p, issues)}`);
       else ok(`${r.id} ${label}: ${p.shots.length} shot × ${FRAMES} khung, ${texts} khối chữ trong vùng an toàn, không đen/trống/lỗi · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
       info(metricsLine(p, insp));
+    }
+  }
+  // Tết: nội dung dài nhất form cho phép vẫn không tràn vùng an toàn (chữ tự co/xuống dòng).
+  const LONG = { company: 'Tổng Công ty Cổ phần Đầu tư Phát triển Thịnh An', title: 'Lễ Khai xuân & Gặp mặt đầu năm', year: 'Xuân Đinh Mùi 2027',
+    wish: 'An Khang · Thịnh Vượng · Vạn Sự Như Ý', date: 'Thứ Năm, 11.02.2027 (Mùng 6 Tết) · 08:30 – 11:00',
+    venue: 'Trung tâm Hội nghị Quốc gia, Phạm Hùng, Nam Từ Liêm, Hà Nội (Sảnh A)' };
+  for (const [w, h, label] of [[1920, 1080, '16:9'], [1080, 1920, '9:16']]) {
+    for (const r of recipes.filter((x) => x.season === 'tet')) {
+      const p = T.buildFromTemplate(blank(`L${r.id.replace(/\W/g, '')}${w}`, w, h), { template: r.id, fields: LONG });
+      const insp = await inspectProject(p, { framesPerShot: 4, thumbWidth: 320 });
+      if (insp.errors?._page) { bad(`${r.id} ${label} (chữ dài): lỗi trang ${insp.errors._page}`); continue; }
+      const issues = qaIssues(p, insp), n = Object.values(issues).flat().length;
+      if (n) bad(`${r.id} ${label} (chữ dài): ${n} lỗi QA\n${describeQa(p, issues)}`);
+      else ok(`${r.id} ${label}: nội dung dài vẫn trong vùng an toàn, 0 lỗi QA`);
     }
   }
   return rows;

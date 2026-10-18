@@ -11,6 +11,7 @@
     "seed:nature": "node scripts/seed-nature.js",
     "seed:tvc": "node scripts/seed-tvc.js",
     "seed:yearend": "node scripts/seed-yearend.js",
+    "seed:tet": "node scripts/seed-tet.js",
     "library": "node scripts/library-import.js",
     "user:add": "node scripts/user-add.js",
     "render:demo": "node scripts/render-cli.js demo",
