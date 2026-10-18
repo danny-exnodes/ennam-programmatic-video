@@ -8,6 +8,7 @@
 // Also: screen-space light shafts (crepuscular rays) — a radial accumulation
 // of bright sky toward the sun, occluded by whatever was drawn in front.
 import { getPass, GLSL_NOISE, hex3, compositeBlurred, makeCanvas } from './glkit.js';
+import { GLSL_PHYS_SKY, bindPhysSky } from './sky.js';
 
 const FS = `#version 300 es
 precision highp float;
@@ -186,14 +187,35 @@ void main() {
   outColor = vec4(toSrgb(col), 1.0);
 }`;
 
+
+// Physical-sky variant (issue #39): the sky block is replaced by the shared
+// atmospheric sky + lit cloud layers, and aerial haze takes the horizon colour of
+// the physical sky in each view direction (unless o.haze is set). Built from FS by
+// string replacement so the legacy program (and its goldens) stays byte-identical.
+const FS_PHYS = (() => {
+  const a = FS.indexOf('  // ---------------- sky ----------------');
+  const b = FS.indexOf('  // ---------------- valley floor');
+  const sky = `  // ---------------- sky (physical) ----------------
+  vec3 col = physSky(d, 1.0);
+  vec3 hazeC = uHazeAuto > 0.5 ? physSky(vec3(d.x, -1e-4, d.z), 0.0) : toLin(uHaze);
+
+`;
+  return (FS.slice(0, a) + sky + FS.slice(b))
+    .replace('uniform float uClouds,', 'uniform float uHazeAuto;\nuniform float uClouds,')
+    .replace('float ridge(', GLSL_PHYS_SKY + '\nfloat ridge(')
+    .split('toLin(uHaze)').join('hazeC')
+    .replace('uHazeAuto > 0.5 ? physSky(vec3(d.x, -1e-4, d.z), 0.0) : hazeC', 'uHazeAuto > 0.5 ? physSky(vec3(d.x, -1e-4, d.z), 0.0) : toLin(uHaze)');
+})();
+
 /**
  * Render the landscape into ctx (full frame). target: 'main' | 'mirror'.
- * o: options from sc.landscape(), sc: { cam, sun, sky, time, scale }
+ * o: options from sc.landscape(), sc: { cam, sun, sky, time, scale, phys? }
  */
 export function renderLandscape(ctx, sc, o, mirror, outW, outH, blurPx) {
   const res = o.res ?? (blurPx > 3 ? 0.35 : 0.6);
   const w = Math.max(2, Math.round(outW * res)), h = Math.max(2, Math.round(outH * res));
-  const S = getPass('landscape', w, h, FS);
+  const phys = sc.phys;
+  const S = phys ? getPass('landscape-phys', w, h, FS_PHYS) : getPass('landscape', w, h, FS);
   const { gl, U } = S;
   S.begin();
   const cam = sc.cam;
@@ -229,6 +251,13 @@ export function renderLandscape(ctx, sc, o, mirror, outW, outH, blurPx) {
   gl.uniform1f(U.uMountains, o.mountains === false ? 0 : (o.mountains ?? 1));
   gl.uniform1f(U.uMtnScale, o.mountainScale ?? 1);
   gl.uniform1f(U.uHoles, o.holes ?? 0.35);
+  if (phys) {
+    // landscape `clouds` (number) still works when the sky has no clouds spec of its own
+    const info = o.clouds !== undefined && phys.opt.clouds === undefined
+      ? { ...phys, clouds: o.clouds ? { cover: Math.min(1, o.clouds * 0.7) } : null } : phys;
+    gl.uniform1f(U.uHazeAuto, o.haze ? 0 : 1);
+    bindPhysSky(S, info, cam.W / w / cam.f);
+  }
   S.draw();
   compositeBlurred(ctx, S.canvas, outW, outH, blurPx, mirror ? 'lsm' : 'ls');
 }

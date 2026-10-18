@@ -32,6 +32,7 @@ Trình duyệt (editor)                Server Node (Express)                 Chr
 | `fx/atmosphere.js` | bokeh, bụi, khói/hơi nước, bọt khí (định luật Stokes), caustics, tia sáng thể tích, sheen thuỷ tinh, lens flare, light leak, burst hạt vật lý |
 | `fx/text.js` | chữ động tiếng Việt (*nhấn màu*), underline, badge, icon |
 | `fx/nature.js` | cảnh thiên nhiên 3D: camera pinhole (mét), phối cảnh, độ sâu trường ảnh, phản chiếu phẳng, thứ tự vẽ |
+| `fx/sky.js` | trời vật lý (#39): LUT khí quyển Hillaire (transmittance, tán xạ bội, sky-view) tính bằng JS một lần mỗi (độ cao mặt trời, haze), cache khoá chính xác, nạp chung cho mọi pass WebGL2; mây 2 lớp từ tile nhiễu cố định có mipmap, trôi theo `t` + gió; phơi sáng tự động; preset `timeOfDay`; dự phòng CPU khi không có WebGL2. `sc.landscape` dùng biến thể shader `landscape-phys` (dựng bằng thay chuỗi nên shader cũ giữ nguyên byte) |
 | `fx/wind.js` | trường gió dùng chung: gió giật lan theo mặt trước gió, nhiễu loạn "đóng băng" trôi theo gió (JS + GLSL giống hệt) |
 | `fx/water.js` | mặt nước WebGL2: sóng gió có tán sắc mao dẫn–trọng lực, mô phỏng trường độ cao (phương trình sóng + số hạng song điều hoà), Fresnel, khúc xạ đáy sỏi + caustics, lấp lánh mặt trời |
 | `fx/foliage.js` | lá rơi theo mô hình tấm mỏng khí động học (Andersen–Pesavento–Wang), cỏ lau là dao động tắt dần chịu lực cản gió |
