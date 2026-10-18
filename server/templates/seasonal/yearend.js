@@ -30,7 +30,7 @@ export const FORM_FIELDS = [
   { key: 'theme', label: 'Chủ đề / slogan', maxLength: 48 },
   { key: 'date', label: 'Ngày giờ', maxLength: 44 },
   { key: 'venue', label: 'Địa điểm', maxLength: 72 },
-  { key: 'accent', label: 'Màu nhấn', type: 'color' },
+  { key: 'accent', label: 'Màu nhấn', type: 'color', brandColor: 'accent' },
 ];
 const MAXLEN = Object.fromEntries(FORM_FIELDS.map((f) => [f.key, f.maxLength]));
 

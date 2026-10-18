@@ -52,6 +52,10 @@ if node scripts/test-jobs.js; then ok "job queue (test-jobs.js)"; else bad "job 
 #     khoá user ≤ cache, token chỉ lưu băm, không lộ secret trong log, userId trên job + lịch sử (server con)
 if node scripts/test-auth.js; then ok "tài khoản + phiên + token (test-auth.js)"; else bad "tài khoản (scripts/test-auth.js)"; fi
 
+# 7b2. Hạn mức chi phí AI (#34): USD theo bảng giá khớp tính tay, đổi giá không đổi dòng đã ghi, tháng UTC+7,
+#      cảnh báo 80% / chặn 100% (402, không xếp job), nới hạn mức có log, restart, chưa cấu hình = như cũ (server con)
+if node scripts/test-budget.js; then ok "hạn mức chi phí AI (test-budget.js)"; else bad "hạn mức chi phí AI (scripts/test-budget.js)"; fi
+
 # 7c. Đạo diễn offline (stub client, không gọi API): prompt caching + brief có cấu trúc (#9)
 if node scripts/test-director-cache.js >/dev/null; then ok "director cache (test-director-cache.js)"; else bad "director cache (scripts/test-director-cache.js)"; fi
 if node scripts/test-director-review.js >/dev/null; then ok "director review approve_cut/patch_shots (test-director-review.js)"; else bad "director review (scripts/test-director-review.js)"; fi

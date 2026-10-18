@@ -9,7 +9,8 @@
 // black, blank, text outside the 6% safe area, slow). Static checks: every s.text-style call
 // has maxWidth, form values prefill shot.fields, the director system prompt does not
 // contain seasonal scenes (prompt cache stays stable). Tết (24b): year/can-chi field, NFC text,
-// and the longest form values still pass QA at both aspects.
+// and the longest form values still pass QA at both aspects. Khai trương / Kỷ niệm (24c): same
+// long-content run, colour fields follow the Brand Kit (brandColor) in every bundle.
 // Exit code: 0 pass, 1 fail, 2 setup error. Non-Linux: skipped locally, FAIL on CI (like golden).
 import assert from 'node:assert/strict';
 import fsp from 'node:fs/promises';
@@ -81,6 +82,35 @@ async function statics(T) {
     assert.ok(p.shots.every((x) => x.fields.year === 'Xuân Mậu Thân 2028'));
     assert.ok(p.shots.some((x) => /s\.field\("year"/.test(x.code)));
   });
+  // Khai trương / Kỷ niệm (24c): mặc định đúng dấu, 3 màu là field, màu nhấn/nền theo Brand Kit, số năm qua form.
+  check('Khai trương: "Khai Trương Hồng Phát", trường accent/base/ribbon trong mọi cảnh, số năm qua form', () => {
+    const op = T.SEASONS.find((x) => x.id === 'opening');
+    assert.ok(op, 'thiếu bộ opening');
+    assert.equal(op.name, 'Khai trương / Kỷ niệm');
+    assert.equal(op.defaults.title, 'Khai Trương Hồng Phát');
+    for (const v of Object.values(op.defaults)) assert.equal(v, v.normalize('NFC'), `chưa NFC: ${v}`);
+    for (const [k, sc] of Object.entries(T.SEASONAL_SCENES).filter(([, v]) => v.season === 'opening')) {
+      const code = sc.code({});
+      for (const key of ['accent', 'base', 'ribbon']) assert.ok(code.includes(`s.field('${key}'`), `${k}: thiếu trường ${key}`);
+      assert.ok(/s\.field\('base', "[^"]+", \{ type: 'color', label: '[^']+', brandColor: 'primary' \}\)/.test(code), `${k}: màu nền chưa theo Brand Kit`);
+      assert.equal(code, code.normalize('NFC'), `${k}: chuỗi chưa NFC`);
+    }
+    assert.ok(Object.values(T.SEASONAL_SCENES).some((v) => v.season === 'opening' && v.code({}).includes('Trân trọng kính mời')));
+    const p = T.buildFromTemplate(blank('z', 1080, 1920), { template: 'opening-anniversary', fields: { years: '25' } });
+    assert.ok(p.shots.every((x) => x.fields.years === '25'));
+    assert.ok(p.shots.some((x) => /s\.field\("years"/.test(x.code)));
+  });
+  check('màu nhấn của mọi bộ theo mùa dùng brandColor (Brand Kit), logo mặc định s.brand.logo', () => {
+    for (const [k, sc] of Object.entries(T.SEASONAL_SCENES)) {
+      const code = sc.code({});
+      const m = code.match(/s\.field\('accent', [^\n]*\);/);
+      assert.ok(m, `${k}: thiếu field accent`);
+      assert.ok(m[0].includes("brandColor: 'accent'"), `${k}: accent thiếu brandColor`);
+      const lg = code.match(/s\.field\('logo', [^\n]*\);/);
+      if (lg) assert.ok(lg[0].includes('s.brand.logo'), `${k}: logo chưa mặc định theo Brand Kit`);
+    }
+    for (const se of T.SEASONS) assert.equal(se.fields.find((f) => f.key === 'accent')?.brandColor, 'accent', `${se.id}: form accent thiếu brandColor`);
+  });
   const { systemPrompt } = await import('../server/director.js');
   check('system prompt đạo diễn không chứa cảnh theo mùa (cache ổn định)', () => {
     const sp = systemPrompt();
@@ -109,13 +139,18 @@ async function render(T) {
       info(metricsLine(p, insp));
     }
   }
-  // Tết: nội dung dài nhất form cho phép vẫn không tràn vùng an toàn (chữ tự co/xuống dòng).
-  const LONG = { company: 'Tổng Công ty Cổ phần Đầu tư Phát triển Thịnh An', title: 'Lễ Khai xuân & Gặp mặt đầu năm', year: 'Xuân Đinh Mùi 2027',
-    wish: 'An Khang · Thịnh Vượng · Vạn Sự Như Ý', date: 'Thứ Năm, 11.02.2027 (Mùng 6 Tết) · 08:30 – 11:00',
-    venue: 'Trung tâm Hội nghị Quốc gia, Phạm Hùng, Nam Từ Liêm, Hà Nội (Sảnh A)' };
+  // Tết + Khai trương: nội dung dài nhất form cho phép vẫn không tràn vùng an toàn (chữ tự co/xuống dòng).
+  const LONG = {
+    tet: { company: 'Tổng Công ty Cổ phần Đầu tư Phát triển Thịnh An', title: 'Lễ Khai xuân & Gặp mặt đầu năm', year: 'Xuân Đinh Mùi 2027',
+      wish: 'An Khang · Thịnh Vượng · Vạn Sự Như Ý', date: 'Thứ Năm, 11.02.2027 (Mùng 6 Tết) · 08:30 – 11:00',
+      venue: 'Trung tâm Hội nghị Quốc gia, Phạm Hùng, Nam Từ Liêm, Hà Nội (Sảnh A)' },
+    opening: { company: 'Tổng Công ty Cổ phần Đầu tư Phát triển Thịnh An', title: 'Khai Trương Chi Nhánh Mới Thủ Đức', subtitle: 'Trung tâm Trải nghiệm Thịnh An – CN Thủ Đức',
+      date: 'Chủ Nhật, 15.11.2026 · 08:30 – 11:30', venue: 'Tầng trệt Vincom Mega Mall, 161 Xa Lộ Hà Nội, Thảo Điền, Thủ Đức, TP.HCM', years: '125',
+      offer: 'Ưu đãi khai trương: giảm 30% và tặng quà cho 100 khách đầu tiên' },
+  };
   for (const [w, h, label] of [[1920, 1080, '16:9'], [1080, 1920, '9:16']]) {
-    for (const r of recipes.filter((x) => x.season === 'tet')) {
-      const p = T.buildFromTemplate(blank(`L${r.id.replace(/\W/g, '')}${w}`, w, h), { template: r.id, fields: LONG });
+    for (const r of recipes.filter((x) => LONG[x.season])) {
+      const p = T.buildFromTemplate(blank(`L${r.id.replace(/\W/g, '')}${w}`, w, h), { template: r.id, fields: LONG[r.season] });
       const insp = await inspectProject(p, { framesPerShot: 4, thumbWidth: 320 });
       if (insp.errors?._page) { bad(`${r.id} ${label} (chữ dài): lỗi trang ${insp.errors._page}`); continue; }
       const issues = qaIssues(p, insp), n = Object.values(issues).flat().length;

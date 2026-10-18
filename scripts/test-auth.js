@@ -246,10 +246,10 @@ try {
     const onDisk = JSON.parse(fs.readFileSync(path.join(DATA, 'jobs', `${j.data.id}.json`), 'utf8'));
     assert.equal(onDisk.userId, memberId);
     assert.deepEqual(onDisk.usage, usage);
-    const month = new Date().toISOString().slice(0, 7);
+    const month = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 7); // VN month (UTC+7, #34)
     const lines = fs.readFileSync(path.join(DATA, 'usage', `${month}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
     assert.equal(lines.length, 1);
-    assert.deepEqual(Object.keys(lines[0]).sort(), ['at', 'jobId', 'projectId', 'usage', 'userId']);
+    assert.deepEqual(Object.keys(lines[0]).sort(), ['at', 'jobId', 'model', 'pricingVersion', 'projectId', 'usage', 'usd', 'userId']); // + USD at write time (#34)
     assert.equal(lines[0].userId, memberId);
     // a second run by the admin, and a legacy line without userId
     const j2 = await call('POST', '/api/test/jobs', { cookie: admin.cookie, body: { kind: 'test-director', projectId: 'pauth', params: { steps: 1, stepMs: 20, usage: { input_tokens: 10, output_tokens: 5 } } } });

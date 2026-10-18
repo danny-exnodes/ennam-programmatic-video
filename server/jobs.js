@@ -41,11 +41,14 @@ jobEvents.setMaxListeners(0);
  * Register a job kind. run(params, ctx) → result, where
  * ctx = { job, signal, progress(k, msg), log(line), set(patch) }.
  * lane: 'render' | 'director' | undefined (unlimited).
+ * paid: true when the kind calls a paid model — server/budget.js `checkBudget` blocks NEW
+ * jobs of such kinds once the caller's monthly budget is used up (#34).
  */
-export function registerKind(kind, { lane, run }) {
-  kinds.set(kind, { lane, run });
+export function registerKind(kind, { lane, run, paid = false }) {
+  kinds.set(kind, { lane, run, paid: !!paid });
 }
 export const hasKind = (kind) => kinds.has(kind);
+export const isPaidKind = (kind) => !!kinds.get(kind)?.paid;
 
 // ---------- persistence ----------
 const fileOf = (id) => path.join(JOBS_DIR, `${id}.json`);
