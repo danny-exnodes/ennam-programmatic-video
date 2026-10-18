@@ -19,6 +19,7 @@ npm run seed                           # (tuỳ chọn) tạo dự án demo "Lum
 npm run seed:nature                    # (tuỳ chọn) demo vật lý thiên nhiên: gió, lá rơi, nước chảy, giọt sương
 npm run seed:tvc                       # (tuỳ chọn) TVC 30s Én Nam (xem docs/TVC_EN_NAM.md)
 npm run seed:yearend                   # (tuỳ chọn) 3 dự án demo bộ mẫu Year End / Gala (thêm `-- --vertical` để có bản 9:16)
+npm run seed:tet                       # (tuỳ chọn) 3 dự án demo bộ mẫu Tết Nguyên đán (thêm `-- --vertical` để có bản 9:16)
 npm run library -- --provider pexels --query "forest stream" --type video   # tải chất liệu có giấy phép (library/sources.json)
 pip install -r scripts/requirements.txt   # (tuỳ chọn) cho scripts/photo/prep.py và scripts/audio/*
 ```
@@ -93,6 +94,7 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 | Bộ | Cảnh (vật lý, tất định) | Công thức nhanh |
 |---|---|---|
 | **Year End / Gala** (`server/templates/seasonal/yearend.js`) | đèn moving-head quét qua khói, bokeh vàng, pháo giấy kim tuyến bắn từ hai góc + tia lửa + kim tuyến rơi, số năm 2026 → 2027 cuộn và bùng nổ, đếm ngược 10 → 0 trên mặt đồng hồ, thiệp mời viền vàng, lời chào | Teaser 10s · Mở màn LED 20s · Countdown 10→0 (10s) |
+| **Tết Nguyên đán** (`server/templates/seasonal/tet.js`) | cành mai vàng & đào hồng nở rồi uốn theo gió (gốc cứng, ngọn mềm), cánh hoa rơi lượn + lộn trong cùng trường gió, đèn lồng đỏ thả xuống bằng lò xo rồi đung đưa như con lắc tắt dần (tua rua trễ pha), khói nhang cuộn, pháo hoa tia lửa, hoa văn trống đồng Đông Sơn, câu đối đỏ mở cuộn + hoành phi, thiệp sơn mài góc cắt giấy; mặc định *Xuân Đinh Mùi 2027* (năm/can chi là trường sửa được), hai màu nhấn vàng kim + đỏ son | Chúc Tết 15s · Thư mời Khai xuân 11s · Mở màn LED 20s |
 
 Mọi chữ, ngày, địa điểm, tên khách, logo và màu nhấn là `s.field` (sửa ở Inspector, không cần AI); bố cục theo tỉ lệ W/H nên chạy cả 16:9 và 9:16. Mẫu theo mùa **không** nằm trong ví dụ few-shot của đạo diễn (giữ system prompt cố định để cache). Thêm bộ mới: tạo `server/templates/seasonal/<mùa>.js` (export `SEASON, DEFAULTS, FORM_FIELDS, SCENES, RECIPES` với `season`) và thêm vào mảng `SEASONAL` trong `server/templates.js`.
 
@@ -121,7 +123,7 @@ node scripts/test-director-review.js             # test offline vòng duyệt: a
 node scripts/test-brief.js                       # test offline brief có cấu trúc: chuẩn hoá, JSON gọn gửi đạo diễn (stub client), snapshot "brief" + khôi phục (tự bật server con)
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
 node scripts/test-brand.js                       # Brand Kit: CRUD + version, khoá/theo kit mới nhất, cảnh báo giấy phép font, route sau đăng nhập, render headless dùng màu/logo/font kit (so pixel), khối kit trong user turn, QA câu cấm (~6s)
-node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống (~10s)
+node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống; Tết thêm lượt nội dung dài nhất (~20s)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 node --env-file=.env scripts/director-bench.js --review  # so output token vòng duyệt: nộp lại cả bản (cũ) vs approve_cut/patch_shots (tốn phí API thật)
 ```
