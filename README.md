@@ -27,6 +27,16 @@ pip install -r scripts/requirements.txt   # (tuỳ chọn) cho scripts/photo/pre
 
 Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 
+## Deploy (link public để chạy thử)
+
+App cần process chạy lâu (hàng đợi job, SSE), ổ đĩa bền (`DATA_DIR`), Chromium + ffmpeg → **không chạy được trên Vercel/Netlify (serverless)**. Dùng container:
+
+- **Render (khuyên dùng):** Dashboard → New → Blueprint → chọn repo → nhập `ANTHROPIC_API_KEY`, `APP_PASSWORD` → Deploy. Cấu hình ở `render.yaml` (gói Standard + ổ 10 GB, region Singapore).
+- **Fly.io / Railway / VPS:** build `Dockerfile`, gắn volume vào `/data`, đặt các biến như trên.
+- **Thử nhanh từ máy dev (không cần tài khoản):** `npm start` rồi `cloudflared tunnel --url http://localhost:5173` → link `*.trycloudflare.com` tạm thời (tắt máy là mất link).
+
+Link public **luôn đặt `APP_PASSWORD`** hoặc tạo tài khoản (`npm run user:add`) — không thì ai có link cũng dùng được Đạo diễn AI bằng API key của team. Container dùng Chromium ghim từ `@sparticuz/chromium` (`scripts/docker-start.sh`).
+
 ## Biến môi trường
 
 | Biến | Ý nghĩa |
