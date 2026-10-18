@@ -116,10 +116,12 @@ node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
 node scripts/test-auth.js                        # test tài khoản: 401, đăng nhập, rate limit, chuyển tiếp APP_PASSWORD, khoá user, token băm, userId trên job/lịch sử (tự bật server con)
 node scripts/test-jobs.js                        # test hàng đợi job: restart → interrupted, giới hạn song song, huỷ, render đọc project lúc chạy, SSE (tự bật server con)
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
+node scripts/test-director-review.js             # test offline vòng duyệt: approve_cut / patch_shots, prefix cache giống hệt mọi lượt, guard vòng cuối (stub client + stub render thử)
 node scripts/test-brief.js                       # test offline brief có cấu trúc: chuẩn hoá, JSON gọn gửi đạo diễn (stub client), snapshot "brief" + khôi phục (tự bật server con)
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
 node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống (~10s)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
+node --env-file=.env scripts/director-bench.js --review  # so output token vòng duyệt: nộp lại cả bản (cũ) vs approve_cut/patch_shots (tốn phí API thật)
 ```
 
 `director-bench.js` cần `ANTHROPIC_API_KEY` và server đang chạy; nếu chưa có dự án demo "Lumi C+ (demo)" nó tự chạy `scripts/seed-demo.js`.

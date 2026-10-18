@@ -54,6 +54,7 @@ if node scripts/test-auth.js; then ok "tài khoản + phiên + token (test-auth.
 
 # 7c. Đạo diễn offline (stub client, không gọi API): prompt caching + brief có cấu trúc (#9)
 if node scripts/test-director-cache.js >/dev/null; then ok "director cache (test-director-cache.js)"; else bad "director cache (scripts/test-director-cache.js)"; fi
+if node scripts/test-director-review.js >/dev/null; then ok "director review approve_cut/patch_shots (test-director-review.js)"; else bad "director review (scripts/test-director-review.js)"; fi
 if node scripts/test-brief.js; then ok "brief có cấu trúc (test-brief.js)"; else bad "brief có cấu trúc (scripts/test-brief.js)"; fi
 
 # 8. Golden-frame render: so khớp ảnh, tất định, hiệu năng (scripts/golden.js tự in PASS/FAIL/WARN)
