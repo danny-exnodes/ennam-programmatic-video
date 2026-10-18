@@ -17,8 +17,11 @@
 //   1. golden   — per-pixel threshold (max channel diff > GOLDEN_PIXEL_THRESHOLD)
 //                 and max ratio of differing pixels (GOLDEN_MAX_RATIO); diff
 //                 images go to test/golden/out/ (uploaded as a CI artifact).
-//   2. determinism — every frame is rendered twice in two fresh pages (second
-//                 one in reverse order) → must be bit-identical.
+//   2. determinism — every frame is rendered again in a fresh page in the same
+//                 order → must be bit-identical; and in a third fresh page in
+//                 REVERSE order → must also be bit-identical (every frame is a
+//                 pure function of t: scrubbing / parallel export workers that
+//                 render frames out of order give the same pixels, #18).
 //   3. perf     — warm ms/frame per fixture, normalised by a fixed in-browser
 //                 calibration workload, vs test/golden/expected/perf.json;
 //                 > GOLDEN_PERF_TOLERANCE (30%) slower → FAIL with CI set, WARN locally.
@@ -196,8 +199,8 @@ async function main() {
       const t0 = Date.now();
       const A = await renderAll(fx, frames, { perf: true });
       // B: fresh page, same sequence → must be bit-identical (FAIL otherwise).
-      // C: fresh page, reverse order → cache/scrub independence (WARN only: parallel
-      //    export workers render interleaved frames, so this should hold too).
+      // C: fresh page, reverse order → cache/scrub independence (FAIL otherwise:
+      //    parallel export workers render interleaved frames, the editor scrubs).
       const B = await renderAll(fx, frames);
       const C = frames.length > 1 ? await renderAll(fx, [...frames].reverse()) : B;
       nFrames += frames.length;
@@ -249,7 +252,8 @@ async function main() {
       if (!fs.readdirSync(OUT).some((f) => f.endsWith('.diff.png') || f.includes('nondeterministic') || f.endsWith('.actual.png'))) ok(`golden-frame ${nFrames} khung khớp (${fixtures.map((f) => f.name).join(', ')})`);
     }
     if (!fs.readdirSync(OUT).some((f) => f.includes('nondeterministic'))) ok(`tất định: render 2 lần → sai khác 0 (${nFrames} khung)`);
-    if (orderDep.length) warn(`kết quả phụ thuộc thứ tự render (cache mô phỏng khi tua ngược): ${orderDep.join(', ')}`);
+    if (orderDep.length) bad(`kết quả phụ thuộc thứ tự render (cache mô phỏng khi tua ngược) — mỗi khung phải là hàm thuần của t: ${orderDep.join(', ')} → test/golden/out/*.order-reverse.png`);
+    else if (fixtures.some((f) => (f.project.golden?.frames || []).length > 1)) ok('độc lập thứ tự render: render ngược chiều → sai khác 0');
 
     if (!UPDATE) {
       const base = fs.existsSync(perfFile) ? JSON.parse(fs.readFileSync(perfFile, 'utf8')) : null;
