@@ -44,8 +44,9 @@ const F = {
   theme: (o) => tf('theme', 'theme', o.theme ?? DEFAULTS.theme, 'Chủ đề / slogan'),
   date: (o) => tf('date', 'date', o.date ?? DEFAULTS.date, 'Ngày giờ'),
   venue: (o) => tf('venue', 'venue', o.venue ?? DEFAULTS.venue, 'Địa điểm'),
-  logo: () => `const logo = s.field('logo', '', { type: 'image', label: 'Logo (tuỳ chọn, tên chất liệu)' });`,
-  accent: (o) => `const accent = s.field('accent', ${J(o.accent ?? DEFAULTS.accent)}, { type: 'color', label: 'Màu nhấn (vàng kim)' });`,
+  // Brand Kit (#8): logo mặc định = logo của kit (nếu có); màu nhấn mặc định = màu "accent" của kit
+  logo: () => `const logo = s.field('logo', s.brand.logo || '', { type: 'image', label: 'Logo (tuỳ chọn, tên chất liệu)' });`,
+  accent: (o) => `const accent = s.field('accent', ${J(o.accent ?? DEFAULTS.accent)}, { type: 'color', label: 'Màu nhấn (vàng kim)', brandColor: 'accent' });`,
 };
 
 const HEAD = `const { t, d, W, H } = s;

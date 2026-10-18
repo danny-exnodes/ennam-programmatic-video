@@ -19,6 +19,7 @@ npm run seed                           # (tuỳ chọn) tạo dự án demo "Lum
 npm run seed:nature                    # (tuỳ chọn) demo vật lý thiên nhiên: gió, lá rơi, nước chảy, giọt sương
 npm run seed:tvc                       # (tuỳ chọn) TVC 30s Én Nam (xem docs/TVC_EN_NAM.md)
 npm run seed:yearend                   # (tuỳ chọn) 3 dự án demo bộ mẫu Year End / Gala (thêm `-- --vertical` để có bản 9:16)
+npm run seed:tet                       # (tuỳ chọn) 3 dự án demo bộ mẫu Tết Nguyên đán (thêm `-- --vertical` để có bản 9:16)
 npm run library -- --provider pexels --query "forest stream" --type video   # tải chất liệu có giấy phép (library/sources.json)
 pip install -r scripts/requirements.txt   # (tuỳ chọn) cho scripts/photo/prep.py và scripts/audio/*
 ```
@@ -82,7 +83,8 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 - **Media** — tải ảnh/video/nhạc. Đặt tên & mô tả để đạo diễn hiểu vai trò. PNG nền trong suốt cho sản phẩm.
 - **Lồng tiếng** — câu thoại trên timeline, tạo giọng AI hoặc tải thu âm.
 - **Nhạc** — nhạc nền, âm lượng, fade.
-- **Phong cách** — grade màu, vignette, bloom, hạt phim, letterbox, bảng màu thương hiệu, khung hình (16:9, 9:16, 1:1, 4:5, 4K), fps.
+- **Phong cách** — Brand Kit đang dùng (đổi kit, khoá / bỏ khoá phiên bản), grade màu, vignette, bloom, hạt phim, letterbox, bảng màu thương hiệu (dự án có kit → màu của kit, chỉ đọc), khung hình (16:9, 9:16, 1:1, 4:5, 4K), fps.
+- **Brand Kit** (nút trên thanh trên cùng, hoặc ở màn hình Dự án) — kit dùng chung giữa các dự án: tên, logo PNG nền trong suốt, 3–5 màu theo vai trò (Chính / Nhấn / Chữ bắt buộc, thêm Phụ / Nền), font tiêu đề + nội dung (font có sẵn hoặc tải `.ttf/.otf/.woff/.woff2` — **bắt buộc ghi nguồn/giấy phép**, để trống thì kit hiện cảnh báo), grade mặc định, giọng TTS, nhạc nhận diện, câu chữ bắt buộc / cấm, outro. Tạo / sửa / nhân bản / xoá; mỗi lần sửa kit tăng phiên bản. Chọn kit khi **tạo** hoặc **nhân bản** dự án (mặc định bản sao giữ kit của bản gốc), kèm tuỳ chọn **Khoá phiên bản kit**: khoá → dự án giữ bản chụp phiên bản lúc gán; không khoá → mở lại dự án (và lúc render / gọi đạo diễn) tự dùng phiên bản mới nhất. Kit áp vào xem trước và bản xuất MP4: `s.palette`, `s.brand` (logo, màu, font), field màu khai báo `brandColor` (mẫu theo mùa: màu nhấn + logo lấy từ kit), font tải lên được nạp trước khi render. Đạo diễn AI nhận tóm tắt kit (màu, font, logo, câu bắt buộc / cấm, outro) trong user turn; QA báo khi chữ của shot (code, field, lồng tiếng) chứa câu cấm.
 - **Cột phải** — thuộc tính shot, chuyển cảnh, mục **Nội dung** (form tự sinh từ các `s.field` của shot: chữ, màu, số, ảnh từ Chất liệu; gõ là xem trước đổi ngay, không gọi AI; *Về mặc định* bỏ giá trị đã sửa), *Nhờ đạo diễn* cho riêng shot, sửa code trực tiếp (xem trước cập nhật ngay).
 - **Timeline** — kéo mép phải shot đổi độ dài, kéo shot đổi thứ tự, kéo câu thoại để dời, bấm thước để tua.
 - **Job** (tab Đạo diễn AI) — tiến độ đạo diễn/xuất video cập nhật tức thì qua SSE (tự chuyển sang poll nếu SSE lỗi); huỷ được cả job đang chờ. Job lưu ở `DATA_DIR/jobs/`, nên khi server khởi động lại giữa chừng job hiện **⚠️ gián đoạn** kèm log cũ và nút **↻ Chạy lại**.
@@ -93,6 +95,7 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 | Bộ | Cảnh (vật lý, tất định) | Công thức nhanh |
 |---|---|---|
 | **Year End / Gala** (`server/templates/seasonal/yearend.js`) | đèn moving-head quét qua khói, bokeh vàng, pháo giấy kim tuyến bắn từ hai góc + tia lửa + kim tuyến rơi, số năm 2026 → 2027 cuộn và bùng nổ, đếm ngược 10 → 0 trên mặt đồng hồ, thiệp mời viền vàng, lời chào | Teaser 10s · Mở màn LED 20s · Countdown 10→0 (10s) |
+| **Tết Nguyên đán** (`server/templates/seasonal/tet.js`) | cành mai vàng & đào hồng nở rồi uốn theo gió (gốc cứng, ngọn mềm), cánh hoa rơi lượn + lộn trong cùng trường gió, đèn lồng đỏ thả xuống bằng lò xo rồi đung đưa như con lắc tắt dần (tua rua trễ pha), khói nhang cuộn, pháo hoa tia lửa, hoa văn trống đồng Đông Sơn, câu đối đỏ mở cuộn + hoành phi, thiệp sơn mài góc cắt giấy; mặc định *Xuân Đinh Mùi 2027* (năm/can chi là trường sửa được), hai màu nhấn vàng kim + đỏ son | Chúc Tết 15s · Thư mời Khai xuân 11s · Mở màn LED 20s |
 
 Mọi chữ, ngày, địa điểm, tên khách, logo và màu nhấn là `s.field` (sửa ở Inspector, không cần AI); bố cục theo tỉ lệ W/H nên chạy cả 16:9 và 9:16. Mẫu theo mùa **không** nằm trong ví dụ few-shot của đạo diễn (giữ system prompt cố định để cache). Thêm bộ mới: tạo `server/templates/seasonal/<mùa>.js` (export `SEASON, DEFAULTS, FORM_FIELDS, SCENES, RECIPES` với `season`) và thêm vào mảng `SEASONAL` trong `server/templates.js`.
 
@@ -141,7 +144,8 @@ node scripts/test-director-cache.js              # test offline: cache_control +
 node scripts/test-director-review.js             # test offline vòng duyệt: approve_cut / patch_shots, prefix cache giống hệt mọi lượt, guard vòng cuối (stub client + stub render thử)
 node scripts/test-brief.js                       # test offline brief có cấu trúc: chuẩn hoá, JSON gọn gửi đạo diễn (stub client), snapshot "brief" + khôi phục (tự bật server con)
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
-node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống (~10s)
+node scripts/test-brand.js                       # Brand Kit: CRUD + version, khoá/theo kit mới nhất, cảnh báo giấy phép font, route sau đăng nhập, render headless dùng màu/logo/font kit (so pixel), khối kit trong user turn, QA câu cấm (~6s)
+node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống; Tết thêm lượt nội dung dài nhất (~20s)
 node scripts/test-render-cache.js                # cache theo đoạn: bản ghép từ cache = bản render đầy đủ (ngưỡng golden), invalidation từng loại đầu vào, xoá cache giữa chừng, LRU, Xem nhanh (~30s, cần ffmpeg)
 node scripts/bench-render-cache.js               # đo: xuất đầy đủ vs sửa 1 field rồi xuất lại (dự án demo 6 shot, 20s, standard) và Xem nhanh vs standard (vài phút)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
@@ -177,6 +181,22 @@ Job render đọc lại dự án **lúc bắt đầu chạy** (không phải lú
 | `POST /api/account/password` `{ current, password }` · `GET /api/account/usage?month=YYYY-MM` | Đổi mật khẩu (đăng xuất các phiên khác) · usage của mình |
 | `GET/POST /api/admin/users` · `PATCH /api/admin/users/:id` `{ status, role, name }` · `POST /api/admin/users/:id/password` | Admin: tài khoản, khoá/mở, đặt lại mật khẩu |
 | `GET /api/admin/usage?month=YYYY-MM` | Admin: token đạo diễn theo người trong tháng (`rows[]`, `months[]`) |
+
+### API Brand Kit
+
+Mọi route nằm sau đăng nhập (thành viên nào cũng quản lý được kit). Kit lưu ở `DATA_DIR/brands/<id>/brand.json` + `files/` (logo, font, nhạc; tên file bất biến). Mọi thay đổi tăng `version`; response có `warnings` (`font_license` khi font thiếu nguồn/giấy phép).
+
+| Route | Ý nghĩa |
+|---|---|
+| `GET/POST /api/brands` · `GET/PUT/DELETE /api/brands/:id` | Liệt kê / tạo / xem / sửa (`name, palette[{role,color}], fonts{heading,body}, grade, voiceId, requiredPhrases[], bannedPhrases[], outro`) / xoá kit. Bảng màu 3–5 màu, vai trò không trùng, bắt buộc `primary`/`accent`/`text` (sai → 400) |
+| `POST /api/brands/:id/duplicate` | Nhân bản kit (version 1, chép cả file) |
+| `POST/DELETE /api/brands/:id/logo` · `POST/DELETE /api/brands/:id/music` | Logo (multipart `file`, chuyển PNG) / nhạc nhận diện |
+| `POST /api/brands/:id/fonts` (multipart `file`, `name`, `license`, `role` = `heading`\|`body`) · `PATCH/DELETE /api/brands/:id/fonts/:fid` | Font tải lên, sửa tên / giấy phép, xoá |
+| `GET /brands/:id/files/:file` | File của kit (màn hình kit) |
+| `POST /api/projects` `{ …, brand: { id, locked } }` · `POST /api/projects/:id/duplicate` `{ brand }` | Gán kit khi tạo / nhân bản (`brand: null` = bỏ kit; bỏ trống khi nhân bản = giữ kit bản gốc) |
+| `PUT /api/projects/:id/brand` `{ id, locked }` / `{ id: null }` | Đổi kit, khoá / bỏ khoá (bỏ khoá → phiên bản mới nhất), bỏ kit; snapshot Lịch sử `brand` |
+
+`project.brand = { id, version, locked, kit }` do server quản lý (`PUT /api/projects/:id` không ghi đè được): `kit` là bản chụp dữ liệu kit, file kit được chép vào `assets/` của dự án với tiền tố `brand-` (không hiện trong Media). Lần gán kit đầu: áp grade mặc định; dự án chưa có nhạc → thêm nhạc nhận diện thành chất liệu nhạc. TTS dùng giọng của kit khi câu thoại chưa chọn giọng.
 
 ### Golden-frame (kiểm tra hình ảnh tự động)
 

@@ -15,7 +15,8 @@ Toạ độ logic luôn là `s.W × s.H` (mặc định 1920×1080), gốc ở g
 | `s.lerp(a,b,k)`, `s.clamp(v,a,b)`, `s.map(v,a,b,c,d)`, `s.smoothstep(a,b,v)` | toán |
 | `s.rand(seed)` | RNG có seed: `r()`, `r.range(a,b)`, `r.int(a,b)`, `r.pick(arr)`, `r.gauss()` |
 | `s.noise(x,y,seed)`, `s.fbm(x,y,seed)` | nhiễu mượt −1..1 |
-| `s.palette` | `{ primary, accent, text }` theo Phong cách dự án |
+| `s.palette` | `{ primary, accent, text }` theo Phong cách dự án; dự án có Brand Kit → màu của kit theo vai trò (có thể thêm `secondary`, `background`) |
+| `s.brand` | Brand Kit của dự án — xem mục [Brand Kit](#brand-kit--sbrand) |
 
 ## Vật lý (giải tích, tua tới lui chính xác)
 - `s.spring({ from, to, stiffness=120, damping=14, mass=1, velocity, delay })` → số. Dao động tắt dần (lò xo).
@@ -47,17 +48,31 @@ Mặc định: ảnh & fx `depth 1`; bokeh 0.3; chữ/badge/underline `depth 0`.
 Chữ/giá/CTA/màu/ảnh mà người dùng có thể muốn đổi **không viết cứng** trong code: khai báo bằng `s.field` để Inspector sinh form sửa (không cần code, không tốn lượt AI).
 Trả về `shot.fields[key]` nếu người dùng đã nhập, ngược lại trả `mặc định`. Không phụ thuộc `s.t`: khai báo ở đầu thân shot, ngoài mọi `if` theo thời gian.
 - `type`: `'text'` (mặc định) | `'color'` (chuỗi màu CSS) | `'number'` | `'image'` (tên chất liệu, dùng cho `s.image`). `label`: nhãn tiếng Việt trên form. `maxLength`: giới hạn ký tự (text).
+- `brandColor` (chỉ `type: 'color'`): vai trò màu của Brand Kit (`'primary'|'accent'|'text'|'secondary'|'background'`). Dự án có kit với vai trò đó → mặc định của field là màu kit (giá trị người dùng đã nhập vẫn thắng); không có kit → dùng `mặc định` trong code.
 - `key` duy nhất trong một shot, dạng ngắn gọn: `headline`, `price`, `cta`, `brand_color`, `product`.
 ```js
 const headline = s.field('headline', 'Sáng mịn, *tươi tắn*', { label: 'Tiêu đề', maxLength: 60 });
-const color = s.field('accent', s.palette.accent, { type: 'color', label: 'Màu nhấn' });
+const color = s.field('accent', '#d9b45f', { type: 'color', label: 'Màu nhấn', brandColor: 'accent' });
 const product = s.field('product', 'serum', { type: 'image', label: 'Ảnh sản phẩm' });
 s.image(product, { h: 640, x: 1300, y: 560 });
 s.text(headline, { x: 160, y: 520, size: 96, accent: color, maxWidth: 900, maxLines: 2 });
 ```
 
+## Brand Kit — `s.brand`
+Dự án có thể gắn một Brand Kit dùng chung (logo, 3–5 màu theo vai trò, font tiêu đề/nội dung, câu chữ bắt buộc/cấm, outro). Không có kit → giá trị trung tính, hình không đổi.
+
+| Thuộc tính | Ý nghĩa |
+|---|---|
+| `s.brand.name` | tên kit (`''` nếu không có kit) |
+| `s.brand.logo` | tên chất liệu logo của kit (`'brand-logo'`, PNG nền trong suốt) hoặc `null` — dùng `if (s.brand.logo) s.image(s.brand.logo, { h: 120, x, y, depth: 0 })` |
+| `s.brand.colors` | màu theo vai trò (giống `s.palette`) |
+| `s.brand.fonts` | `{ heading, body }` — chuỗi CSS font-family (font upload của kit hoặc font có sẵn) |
+| `s.brand.outro` | câu kết thương hiệu (`''` nếu không có) |
+- `s.text(..., { font: 'heading' })` / `font: 'body'` dùng font của kit (không có kit → sans có sẵn). Không đặt `font` → font `body` của kit (nếu kit có đặt), ngược lại sans như cũ. `s.fonts` có thêm `heading`, `body`.
+- Màu thương hiệu: dùng `s.palette.*` hoặc field `{ type: 'color', brandColor: 'accent' }`; không viết cứng mã màu khác bảng màu kit cho logo/chữ thương hiệu.
+
 ## Chữ & biểu tượng
-- `s.text(str, { x, y, size=72, weight=700, font:'sans'|'serif', color, accent, align:'left'|'center'|'right', anim:'rise'|'fade'|'blur'|'pop'|'wipe'|'type'|'none', start, dur, stagger, out, outDur, maxWidth, maxLines, minSize, lineHeight, letterSpacing, italic, shadow })`
+- `s.text(str, { x, y, size=72, weight=700, font:'sans'|'serif'|'heading'|'body', color, accent, align:'left'|'center'|'right', anim:'rise'|'fade'|'blur'|'pop'|'wipe'|'type'|'none', start, dur, stagger, out, outDur, maxWidth, maxLines, minSize, lineHeight, letterSpacing, italic, shadow })`
   - `*từ nhấn*` hiển thị màu `accent`. `y` là đường chân chữ dòng đầu. Xuống dòng bằng `maxWidth`.
   - Tự co chữ: nếu một dòng vẫn rộng hơn `maxWidth` (từ quá dài) hoặc số dòng vượt `maxLines`, cỡ chữ tự giảm (không nhỏ hơn `minSize` nếu có đặt) cho vừa. `maxLines: 1` = một dòng, không xuống dòng, chỉ co. Luôn đặt `maxWidth` cho chữ lấy từ `s.field`.
   - Trả về `{ width, height, lines, size }` (`size` = cỡ chữ thực tế sau khi co).

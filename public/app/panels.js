@@ -5,6 +5,7 @@ import { api, fileUrl, exportUrl, previewUrl } from './api.js';
 import { engine } from './player.js';
 import { MATERIALS, GRADES, ICON_NAMES } from '/engine/engine.js';
 import { whoLabel } from './account.js';
+import { kitPicker, kitSwatches, showBrandKits, ROLE_LABEL } from './brands.js';
 
 const panel = document.getElementById('panel');
 
@@ -18,7 +19,8 @@ export function renderPanel() {
 
 // ---------------------------------------------------------------- projects
 async function renderProjects() {
-  const list = await api.projects();
+  const [list, kits] = await Promise.all([api.projects(), api.brands().catch(() => [])]);
+  const picker = kitPicker(kits);
   const name = h('input', { placeholder: 'Tên dự án mới, VD: Lumi C+ TVC 20s' });
   const aspect = h('select', {},
     h('option', { value: '1920x1080' }, '16:9 · 1920×1080 (YouTube, màn LED)'),
@@ -28,20 +30,33 @@ async function renderProjects() {
   panel.replaceChildren(
     h('h3', {}, 'Dự án'),
     name, h('div', { style: { height: '8px' } }), aspect,
+    picker.el,
+    h('button', { class: 'ghost block', style: { marginTop: '6px' }, onclick: () => showBrandKits({ onChange: () => renderPanel() }) }, '🏷 Quản lý Brand Kit'),
     h('button', {
-      class: 'primary block', style: { marginTop: '10px' },
+      class: 'primary block', style: { marginTop: '10px' }, id: 'btnCreateProject',
       onclick: async () => {
         const [w, hh] = aspect.value.split('x').map(Number);
-        const p = await api.create({ name: name.value.trim() || 'Dự án mới', width: w, height: hh });
+        const p = await api.create({ name: name.value.trim() || 'Dự án mới', width: w, height: hh, brand: picker.value() });
         emit('open', p.id);
       },
     }, '+ Tạo dự án'),
     h('div', { class: 'section-title' }, `Tất cả (${list.length})`),
     h('div', { class: 'list projects' }, list.map((p) => h('div', { class: 'item', onclick: () => emit('open', p.id) },
-      h('div', { class: 'grow' }, h('div', {}, p.name), h('div', { class: 'small muted' }, `${p.width}×${p.height} · ${fmt(p.duration)} · ${p.shots} shot · ${new Date(p.updatedAt).toLocaleString('vi-VN')}`)),
-      h('button', { class: 'icon', title: 'Nhân bản', onclick: async (e) => { e.stopPropagation(); await api.duplicate(p.id); renderPanel(); } }, '⧉'),
+      h('div', { class: 'grow' }, h('div', {}, p.name), h('div', { class: 'small muted' }, `${p.width}×${p.height} · ${fmt(p.duration)} · ${p.shots} shot${p.brand ? ` · 🏷 ${p.brand.name}${p.brand.locked ? ` (khoá v${p.brand.version})` : ''}` : ''} · ${new Date(p.updatedAt).toLocaleString('vi-VN')}`)),
+      h('button', { class: 'icon', title: 'Nhân bản', onclick: (e) => { e.stopPropagation(); duplicateDialog(p, kits); } }, '⧉'),
       h('button', { class: 'icon', title: 'Xoá', onclick: async (e) => { e.stopPropagation(); if (confirm(`Xoá dự án "${p.name}"?`)) { await api.remove(p.id); renderPanel(); } } }, '🗑')))),
   );
+}
+
+/** Nhân bản dự án: chọn Brand Kit cho bản sao (mặc định giữ kit + trạng thái khoá của bản gốc). */
+function duplicateDialog(p, kits) {
+  const picker = kitPicker(kits, p.brand);
+  const close = modal(`Nhân bản "${p.name}"`, h('div', { style: { maxWidth: '460px' } },
+    picker.el,
+    h('button', {
+      class: 'primary', style: { marginTop: '14px' },
+      onclick: async () => { await api.duplicate(p.id, { brand: picker.value() }); close(); renderPanel(); toast('Đã nhân bản dự án'); },
+    }, '⧉ Nhân bản')));
 }
 
 // ---------------------------------------------------------------- director
@@ -341,6 +356,11 @@ function seasonChips(onChange) {
     onclick: () => { seasonFilter = v; onChange(); },
   }, label)));
 }
+/** Màu mặc định trên form theo mùa: màu "accent" của Brand Kit (field dùng brandColor) hoặc mặc định của bộ mẫu. */
+function seasonColorDefault(season, key) {
+  const kitAccent = key === 'accent' && state.project?.brand?.kit?.palette?.find((c) => c.role === 'accent')?.color;
+  return kitAccent || season?.defaults?.[key] || '#d9b45f';
+}
 const seasonName = (id) => (state.config.seasons || []).find((x) => x.id === id)?.name || id;
 
 function quick() {
@@ -373,7 +393,7 @@ function quick() {
     return h('div', {}, h('p', { class: 'small muted' }, 'Điền thông tin khách — để trống giữ chữ mẫu. Sau khi dựng, sửa từng shot ở tab Nội dung (Inspector).'),
       s.fields.map((f) => {
         const inp = f.type === 'color'
-          ? h('input', { type: 'color', value: s.defaults[f.key] || '#d9b45f' })
+          ? h('input', { type: 'color', value: seasonColorDefault(s, f.key) })
           : h('input', { placeholder: s.defaults[f.key] || '', maxLength: f.maxLength || 60 });
         seasonInputs[f.key] = inp;
         return [h('label', {}, f.label), inp];
@@ -401,7 +421,7 @@ function quick() {
         await saveNow();
         const t = cur();
         const body = t?.season
-          ? { template: t.id, fields: Object.fromEntries(Object.entries(seasonInputs).map(([k, el]) => [k, el.type === 'color' && el.value === (state.config.seasons.find((x) => x.id === t.season)?.defaults[k]) ? '' : el.value])) }
+          ? { template: t.id, fields: Object.fromEntries(Object.entries(seasonInputs).map(([k, el]) => [k, el.type === 'color' && el.value === seasonColorDefault(state.config.seasons.find((x) => x.id === t.season), k) ? '' : el.value])) }
           : {
             template: tpl.value, headline: headline.value || undefined, material: mat.value, cta: cta.value,
             features: feats.map((f) => ({ icon: f.icon.value, label: f.label.value })),
@@ -576,8 +596,10 @@ function style() {
   const pal = st.palette || {};
   const color = (key, label) => h('div', {}, h('div', { class: 'small muted', style: { marginBottom: '4px' } }, label),
     h('input', { type: 'color', value: pal[key] || '#ffffff', oninput: (e) => update((pp) => { pp.style.palette = { ...pp.style.palette, [key]: e.target.value }; }, { structural: false }) }));
+  const kit = p.brand?.kit;
   return h('div', {},
     h('h3', {}, 'Phong cách'),
+    brandBox(p),
     h('label', {}, 'Chỉnh màu (grade)'),
     h('select', { onchange: (e) => update((pp) => { pp.style.grade = e.target.value; }, { structural: false }) },
       Object.entries(GRADES).map(([k, g]) => h('option', { value: k, selected: st.grade === k }, g.label))),
@@ -586,7 +608,10 @@ function style() {
     slider('Hạt phim', st.grain ?? 0.05, { max: 0.25, onInput: (v) => update((pp) => { pp.style.grain = v; }, { structural: false }) }),
     slider('Letterbox điện ảnh', st.letterbox ?? 0, { max: 0.15, onInput: (v) => update((pp) => { pp.style.letterbox = v; }, { structural: false }) }),
     h('label', {}, 'Bảng màu thương hiệu'),
-    h('div', { class: 'swatches' }, color('primary', 'Chính'), color('accent', 'Nhấn'), color('text', 'Chữ')),
+    kit
+      ? h('div', {}, h('div', { class: 'kit-roles' }, kit.palette.map((c) => h('div', {}, h('i', { style: { background: c.color } }), h('span', { class: 'small' }, `${ROLE_LABEL[c.role] || c.role} ${c.color}`)))),
+        h('p', { class: 'small muted' }, 'Màu lấy từ Brand Kit (s.palette). Sửa ở màn hình Brand Kit.'))
+      : h('div', { class: 'swatches' }, color('primary', 'Chính'), color('accent', 'Nhấn'), color('text', 'Chữ')),
     h('label', {}, 'Khung hình'),
     h('div', { class: 'row' },
       h('select', {
@@ -599,6 +624,43 @@ function style() {
         [24, 25, 30, 50, 60].map((f) => h('option', { value: f, selected: p.fps === f }, f + ' fps')))),
     h('p', { class: 'small muted' }, 'Đổi khung hình xong, nhờ đạo diễn "bố cục lại cho dọc 9:16" để chữ và sản phẩm nằm đúng vùng an toàn.'),
   );
+}
+
+/** Brand Kit đang dùng (tab Phong cách): đổi kit, khoá / bỏ khoá phiên bản, mở màn hình quản lý. */
+function brandBox(p) {
+  const box = h('div', { class: 'brand-box' }, h('div', { class: 'small muted' }, 'Đang tải Brand Kit…'));
+  api.brands().then((kits) => {
+    const b = p.brand;
+    const live = b && kits.find((k) => k.id === b.id);
+    const sel = h('select', { id: 'styleKit' }, h('option', { value: '' }, '— Không dùng Brand Kit —'),
+      kits.map((k) => h('option', { value: k.id, selected: b?.id === k.id }, `${k.name} · v${k.version}`)),
+      b && !live ? h('option', { value: b.id, selected: true }, `${b.kit.name} (kit đã xoá — giữ bản chụp)`) : null);
+    const apply = async (next) => {
+      await saveNow();
+      setProject(await api.setProjectBrand(p.id, next));
+      toast(next.id ? 'Đã áp Brand Kit' : 'Đã bỏ Brand Kit');
+    };
+    sel.onchange = () => apply(sel.value ? { id: sel.value, locked: !!b?.locked } : { id: null });
+    const lock = h('input', { type: 'checkbox', checked: !!b?.locked, disabled: !b, style: { width: 'auto' }, onchange: (e) => apply({ id: b.id, locked: e.target.checked }) });
+    const stale = b && live && b.locked && live.version > b.version;
+    box.replaceChildren(
+      h('label', {}, 'Brand Kit'),
+      h('div', { class: 'row' }, sel, h('button', { class: 'shrink', title: 'Quản lý Brand Kit', onclick: () => showBrandKits({ onChange: reloadBrand }) }, '🏷')),
+      b ? h('div', { class: 'kit-summary' },
+        b.kit.logo ? h('img', { src: `/files/${p.id}/assets/${encodeURIComponent(b.kit.logo.file)}`, alt: 'logo' }) : null,
+        h('div', {}, h('strong', {}, b.kit.name), h('span', { class: 'small muted' }, ` · phiên bản ${b.version}`), h('div', {}, kitSwatches(b.kit, 14)))) : null,
+      b ? h('label', { class: 'check' }, lock, ` Khoá phiên bản kit${stale ? ` (kit đã có v${live.version})` : ''}`) : null,
+    );
+  }).catch((e) => box.replaceChildren(h('div', { class: 'small muted' }, 'Không tải được Brand Kit: ' + e.message)));
+  return box;
+}
+
+/** Sau khi sửa kit: dự án đang mở (không khoá) lấy lại để dùng phiên bản mới nhất. */
+export async function reloadBrand() {
+  const p = state.project;
+  if (!p?.brand || p.brand.locked) return;
+  await saveNow();
+  setProject(await api.get(p.id));
 }
 
 on('tab', (t) => {

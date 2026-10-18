@@ -42,6 +42,7 @@ export function defaultProject(o = {}) {
       palette: { primary: '#f08a12', accent: '#f5b54a', text: '#ffffff' },
       ...(o.style || {}),
     },
+    brand: null, // Brand Kit (#8): { id, version, locked, kit } — xem server/brands.js
     assets: [],
     shots: o.shots || [],
     voice: [],
@@ -140,8 +141,17 @@ export function compactBrief(b) {
   return Object.keys(n).length ? JSON.stringify(n) : '';
 }
 
+/** `project.brand` (#8): { id, version, locked, kit } hoặc null — kit là snapshot (server/brands.js). */
+export function normalizeProjectBrand(b) {
+  if (!b || typeof b !== 'object' || !b.id || !b.kit || typeof b.kit !== 'object') return null;
+  return { id: String(b.id), version: Number(b.version) || 1, locked: !!b.locked, kit: b.kit };
+}
+
 export function normalizeProject(p) {
-  if (p && typeof p === 'object') p.brief = normalizeBrief(p.brief);
+  if (p && typeof p === 'object') {
+    p.brief = normalizeBrief(p.brief);
+    if ('brand' in p) p.brand = normalizeProjectBrand(p.brand);
+  }
   if (Array.isArray(p?.shots)) {
     for (const s of p.shots) {
       if (!s || typeof s !== 'object') continue;
@@ -164,6 +174,7 @@ export async function listProjects() {
         id: p.id, name: p.name, updatedAt: p.updatedAt, width: p.width, height: p.height,
         duration: p.shots.reduce((s, x) => s + x.duration, 0), shots: p.shots.length,
         thumb: p.assets.find((a) => a.type === 'image')?.file || null,
+        brand: p.brand ? { id: p.brand.id, name: p.brand.kit?.name || '', version: p.brand.version, locked: !!p.brand.locked } : null,
       });
     } catch { /* skip broken */ }
   }

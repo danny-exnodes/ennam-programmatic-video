@@ -12,6 +12,7 @@ import { thumbBase64, videoStillBase64 } from './media.js';
 import { inspectProject } from './render.js';
 import { qaIssues, describeQa, metricsLine, isRuntimeFailure } from './qa.js';
 import { SCENES } from './templates.js';
+import { compactKit } from './brands.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DIRECTOR_MODEL = process.env.DIRECTOR_MODEL || 'claude-opus-5-5';
@@ -224,6 +225,9 @@ function projectForPrompt(p) {
 
 /** Tiêu đề khối brief trong user turn (khoá JSON tiếng Anh, giải nghĩa tiếng Việt). */
 export const BRIEF_HEADER = 'BRIEF (JSON gọn, trường trống đã bỏ — subject: sản phẩm/sự kiện, message: thông điệp chính, moods: cảm xúc, duration: thời lượng mong muốn (giây), aspect: kênh/tỉ lệ khung, cta: kêu gọi hành động, notes: ghi chú tự do):';
+
+/** Tiêu đề khối Brand Kit trong user turn (#8) — tóm tắt kit, không đụng system prompt. */
+export const BRAND_HEADER = 'BRAND KIT của dự án (JSON gọn — colors: màu theo vai trò, đã có sẵn trong s.palette / s.brand.colors; fonts: s.text font \'heading\' / \'body\'; logo: tên chất liệu logo = s.brand.logo; requiredPhrases: câu chữ BẮT BUỘC xuất hiện nguyên văn ít nhất một lần trong chữ hiển thị hoặc lồng tiếng; bannedPhrases: câu chữ CẤM, không được xuất hiện ở bất kỳ chữ, field hay lồng tiếng nào; outro: câu kết thương hiệu cho shot cuối). Field màu dùng { type: \'color\', brandColor: \'<vai trò>\' }:';
 
 export const USAGE_FIELDS = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'];
 
@@ -468,6 +472,7 @@ export async function runDirector(project, { brief, request, shotId, review = tr
   const ask = (typeof request === 'string' && request.trim()) || legacy;
   const structured = normalizeBrief(brief && typeof brief === 'object' ? brief : project.brief);
   const briefJson = compactBrief(structured);
+  const kitJson = compactKit(project);
   const task = shotId
     ? `Chỉ sửa shot "${target?.name}" (id ${shotId}). Giữ nguyên các shot khác. Yêu cầu: ${ask || 'làm shot này đẹp và chân thực hơn'}`
     : project.shots.length
@@ -480,6 +485,7 @@ export async function runDirector(project, { brief, request, shotId, review = tr
       { type: 'text', text: `DANH SÁCH CHẤT LIỆU:\n${list}` },
       ...blocks,
       { type: 'text', text: `DỰ ÁN HIỆN TẠI (JSON):\n${projectForPrompt(project)}` },
+      ...(kitJson ? [{ type: 'text', text: `${BRAND_HEADER}\n${kitJson}` }] : []),
       ...(briefJson ? [{ type: 'text', text: `${BRIEF_HEADER}\n${briefJson}` }] : []),
       { type: 'text', text: `NHIỆM VỤ: ${task}` },
     ],

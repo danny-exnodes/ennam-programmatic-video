@@ -1,5 +1,5 @@
 // Preview player: runs the engine in the editor and keeps music / voice in sync.
-import { Engine, loadFonts } from '/engine/engine.js';
+import { Engine, loadFonts, loadBrandFonts, BRAND_LOGO } from '/engine/engine.js';
 import { state, on, emit, duration, seek } from './state.js';
 import { fileUrl } from './api.js';
 
@@ -32,6 +32,20 @@ export async function syncAssets() {
       engine.setAsset(a.name, el, a.type);
     }
   }
+  // Brand Kit (#8): logo as asset BRAND_LOGO + uploaded fonts (FontFace) → redraw once loaded
+  const kit = p.brand?.kit;
+  if (kit?.logo?.file) {
+    const key = 'brand:' + kit.logo.file;
+    let el = mediaCache.get(key);
+    if (!el) {
+      el = new Image();
+      el.src = fileUrl(p, kit.logo);
+      mediaCache.set(key, el);
+      loads.push(new Promise((res) => { el.addEventListener('load', res, { once: true }); el.addEventListener('error', res, { once: true }); }));
+    }
+    engine.setAsset(BRAND_LOGO, el, 'image');
+  }
+  if (kit) loadBrandFonts(kit, (f) => fileUrl(p, f)).then((added) => added && draw());
   if (loads.length) Promise.all(loads).then(() => draw());
 }
 

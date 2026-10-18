@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import * as store from './store.js';
+import * as brands from './brands.js';
 import { kindOf, probe, normalizeImage } from './media.js';
 import { initJobs, createJob, getJob, publicJob, listJobs, cancelJob, retryJob, hasKind, jobEvents, TERMINAL, DIRECTOR_CONCURRENCY } from './jobs.js';
 import { registerDefaultKinds } from './job-kinds.js';
@@ -97,6 +98,14 @@ app.use('/engine', express.static(path.join(ROOT, 'engine'), { maxAge: 0 }));
 app.use('/fonts/be-vietnam-pro', express.static(path.join(ROOT, 'node_modules/@fontsource/be-vietnam-pro'), { maxAge: '7d' }));
 app.use('/fonts/playfair-display', express.static(path.join(ROOT, 'node_modules/@fontsource/playfair-display'), { maxAge: '7d' }));
 app.use(express.static(path.join(ROOT, 'public'), { maxAge: 0 }));
+// Brand Kit files (logo, fonts, music) for the kit screen — behind auth like everything not public.
+app.get('/brands/:id/files/:file', (req, res, next) => {
+  try {
+    const f = path.join(brands.brandFilesDir(req.params.id), path.basename(req.params.file));
+    if (!fs.existsSync(f)) return res.status(404).end();
+    res.sendFile(f);
+  } catch (e) { next(e); }
+});
 app.get('/files/:id/:kind/:file', (req, res, next) => {
   try {
     if (!['assets', 'exports', 'preview'].includes(req.params.kind)) return res.status(404).end();
@@ -125,17 +134,23 @@ app.post('/api/projects', wrap(async (req, res) => {
   const b = req.body || {};
   const p = store.defaultProject({ name: b.name, width: b.width, height: b.height, fps: b.fps, brief: b.brief });
   await store.ensureDirs(p.id);
+  if (b.brand?.id) await brands.applyKitToProject(p, b.brand); // Brand Kit chọn lúc tạo (#8)
   await store.saveProject(p);
   res.json(p);
 }));
 
-app.get('/api/projects/:id', wrap(async (req, res) => res.json(await store.loadProject(req.params.id))));
+// Open: a project that follows its Brand Kit (not locked) is moved to the kit's latest version.
+app.get('/api/projects/:id', wrap(async (req, res) => {
+  const p = await store.loadProject(req.params.id);
+  if (await brands.syncProjectBrand(p)) await store.saveProject(p);
+  res.json(p);
+}));
 
 app.put('/api/projects/:id', wrap(async (req, res) => {
   const cur = await store.loadProject(req.params.id);
   const body = req.body;
   // server owns these fields
-  const next = { ...cur, ...body, id: cur.id, assets: body.assets ?? cur.assets, exports: cur.exports, createdAt: cur.createdAt };
+  const next = { ...cur, ...body, id: cur.id, assets: body.assets ?? cur.assets, exports: cur.exports, createdAt: cur.createdAt, brand: cur.brand ?? null };
   validateProject(next);
   store.clearStaleReview(cur.shots, next.shots); // editing a flagged shot's code clears needsReview
   let snapshot = req.query.snapshot === '1', reason = req.query.reason || 'save';
@@ -157,6 +172,10 @@ app.post('/api/projects/:id/duplicate', wrap(async (req, res) => {
   const p = { ...structuredClone(src), id: store.newId('p'), name: src.name + ' (bản sao)', exports: [] };
   await store.ensureDirs(p.id);
   await fsp.cp(path.join(store.projectDir(src.id), 'assets'), path.join(store.projectDir(p.id), 'assets'), { recursive: true });
+  // body.brand: undefined → giữ kit của bản gốc; null → bỏ kit; { id, locked } → gán kit khác / đổi khoá
+  const sel = req.body?.brand;
+  if (sel !== undefined) await brands.applyKitToProject(p, sel && sel.id ? sel : null);
+  else await brands.syncProjectBrand(p);
   await store.saveProject(p);
   res.json(p);
 }));
@@ -167,7 +186,7 @@ app.get('/api/projects/:id/history', wrap(async (req, res) => {
 app.post('/api/projects/:id/history/:file/restore', wrap(async (req, res) => {
   const cur = await store.loadProject(req.params.id);
   const old = await store.loadHistory(req.params.id, req.params.file);
-  const next = { ...old, id: cur.id, assets: cur.assets, exports: cur.exports };
+  const next = { ...old, id: cur.id, assets: cur.assets, exports: cur.exports, brand: cur.brand ?? null };
   await store.saveProject(next, { snapshot: true, reason: 'before-restore', userId: uid(req) });
   res.json(next);
 }));
@@ -253,6 +272,49 @@ app.delete('/api/projects/:id/assets/:assetId', wrap(async (req, res) => {
   res.json(p);
 }));
 
+// --- Brand Kit (#8): shared across projects; any signed-in member may manage kits ---
+const uploadedOne = (req) => {
+  const f = req.file;
+  if (!f) throw Object.assign(new Error('Thiếu file'), { status: 400 });
+  return { path: f.path, original: Buffer.from(f.originalname, 'latin1').toString('utf8'), mimetype: f.mimetype };
+};
+app.get('/api/brands', wrap(async (_req, res) => res.json(await brands.listKits())));
+app.post('/api/brands', wrap(async (req, res) => res.json(await brands.createKit(req.body || {}))));
+app.get('/api/brands/:bid', wrap(async (req, res) => res.json(await brands.getKit(req.params.bid))));
+app.put('/api/brands/:bid', wrap(async (req, res) => res.json(await brands.updateKit(req.params.bid, req.body || {}))));
+app.delete('/api/brands/:bid', wrap(async (req, res) => { await brands.deleteKit(req.params.bid); res.json({ ok: true }); }));
+app.post('/api/brands/:bid/duplicate', wrap(async (req, res) => res.json(await brands.duplicateKit(req.params.bid))));
+app.post('/api/brands/:bid/logo', upload.single('file'), wrap(async (req, res) => {
+  const f = uploadedOne(req);
+  if (kindOf(f.mimetype, f.original) !== 'image') { await fsp.rm(f.path, { force: true }); return res.status(400).json({ error: 'Logo phải là ảnh (PNG nền trong suốt)' }); }
+  res.json(await brands.setLogo(req.params.bid, f));
+}));
+app.delete('/api/brands/:bid/logo', wrap(async (req, res) => res.json(await brands.removeLogo(req.params.bid))));
+app.post('/api/brands/:bid/fonts', upload.single('file'), wrap(async (req, res) => {
+  const f = uploadedOne(req);
+  const { name, license, role } = req.body || {};
+  res.json(await brands.addFont(req.params.bid, f, { name, license, role }));
+}));
+app.patch('/api/brands/:bid/fonts/:fid', wrap(async (req, res) => res.json(await brands.updateFont(req.params.bid, req.params.fid, req.body || {}))));
+app.delete('/api/brands/:bid/fonts/:fid', wrap(async (req, res) => res.json(await brands.removeFont(req.params.bid, req.params.fid))));
+app.post('/api/brands/:bid/music', upload.single('file'), wrap(async (req, res) => {
+  const f = uploadedOne(req);
+  if (kindOf(f.mimetype, f.original) !== 'audio') { await fsp.rm(f.path, { force: true }); return res.status(400).json({ error: 'Nhạc nhận diện phải là file âm thanh' }); }
+  const meta = await probe(f.path, 'audio').catch(() => ({}));
+  res.json(await brands.setMusic(req.params.bid, f, meta));
+}));
+app.delete('/api/brands/:bid/music', wrap(async (req, res) => res.json(await brands.removeMusic(req.params.bid))));
+// Change the project's kit / lock state: { id, locked } or { id: null } to remove the kit.
+app.put('/api/projects/:id/brand', wrap(async (req, res) => {
+  const p = await store.loadProject(req.params.id);
+  const sel = req.body || {};
+  if (sel.id && p.brand?.id === sel.id && !!sel.locked === !!p.brand.locked) return res.json(p);
+  if (sel.id && p.brand?.id === sel.id && sel.locked) p.brand.locked = true; // lock: freeze the current snapshot
+  else await brands.applyKitToProject(p, sel.id ? sel : null); // unlock → latest version; other kit → apply
+  await store.saveProject(p, { snapshot: true, reason: 'brand', userId: uid(req) });
+  res.json(p);
+}));
+
 // --- voice-over TTS ---
 app.post('/api/projects/:id/voice/:lineId/tts', wrap(async (req, res) => {
   const p = await store.loadProject(req.params.id);
@@ -261,7 +323,7 @@ app.post('/api/projects/:id/voice/:lineId/tts', wrap(async (req, res) => {
   const id = store.newId('a');
   const file = `${id}.mp3`;
   const out = path.join(store.projectDir(p.id), 'assets', file);
-  await synthesize(line.text, out, { voice: req.body?.voice || line.voiceId });
+  await synthesize(line.text, out, { voice: req.body?.voice || line.voiceId || p.brand?.kit?.voiceId || undefined });
   const meta = await probe(out, 'audio');
   const old = p.assets.find((a) => a.id === line.assetId && a.role === 'voice');
   if (old) {

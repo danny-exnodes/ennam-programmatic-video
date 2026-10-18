@@ -202,3 +202,27 @@ body.login-page { display: flex; align-items: center; justify-content: center; m
 .acct-section h4 { margin: 0 0 8px; font-size: 12.5px; }
 .acct-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .acct-form .full { grid-column: 1 / -1; }
+
+/* Brand Kit (#8) */
+.kit-sw { display: inline-flex; gap: 3px; vertical-align: middle; }
+.kit-sw i { display: inline-block; border-radius: 4px; border: 1px solid rgba(255,255,255,0.18); }
+.kit-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.kit-card { display: grid; grid-template-columns: 84px 1fr; grid-template-rows: auto auto; gap: 10px; background: var(--bg3); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+.kit-card .kit-actions { grid-column: 1 / -1; display: flex; gap: 6px; }
+.kit-logo { width: 84px; height: 64px; border-radius: 8px; display: grid; place-items: center; overflow: hidden; font-size: 11px; text-align: center;
+  background: repeating-conic-gradient(#232836 0% 25%, #1a1e29 0% 50%) 50% / 14px 14px; }
+.kit-logo img { max-width: 92%; max-height: 92%; object-fit: contain; border-radius: 0 !important; }
+.kit-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 760px) { .kit-cols { grid-template-columns: 1fr; } }
+.font-sample { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-top: 6px; font-size: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.upload-font { display: grid; gap: 6px; margin-top: 8px; padding: 10px; border: 1px dashed #3a4152; border-radius: 10px; }
+.item .license { margin-top: 4px; padding: 5px 8px; font-size: 12px; }
+.warn-item { box-shadow: inset 3px 0 0 var(--amber); }
+.warn { color: var(--amber); }
+label.check { display: flex; align-items: center; gap: 6px; color: var(--text); cursor: pointer; }
+.brand-box { background: var(--bg3); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px 12px 12px; margin-bottom: 6px; }
+.kit-summary { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+.kit-summary img { width: 54px; height: 40px; object-fit: contain; }
+.kit-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.kit-roles > div { display: flex; align-items: center; gap: 6px; }
+.kit-roles i { width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.18); }

@@ -83,7 +83,13 @@ else
   [ $sc = 0 ] || { fail=1; echo "FAIL  test-seasonal (exit $sc)"; }
 fi
 
-# 10. Cache đoạn render (#29): bản ghép từ cache = bản render đầy đủ (ngưỡng golden, cả vùng chuyển cảnh),
+# 10. Brand Kit (#8): CRUD + version, khoá/theo kit mới nhất, cảnh báo giấy phép font, route sau đăng nhập,
+#     render headless dùng màu/logo/font của kit (pixel), khối kit trong user turn đạo diễn, QA câu chữ cấm
+#     (server con; phần render chỉ Linux x64 như golden — tự bỏ qua local, FAIL trên CI)
+node scripts/test-brand.js; bc=$?
+[ $bc = 0 ] || { fail=1; echo "FAIL  test-brand (exit $bc)"; }
+
+# 11. Cache đoạn render (#29): bản ghép từ cache = bản render đầy đủ (ngưỡng golden, cả vùng chuyển cảnh),
 #     đổi từng loại đầu vào (code, field, chất liệu, style, fps) → đúng đoạn đó render lại, xoá cache giữa
 #     chừng vẫn xuất được, LRU, Xem nhanh (Chromium cố định + ffmpeg, scripts/test-render-cache.js, ~30s)
 if [ -n "${SKIP_GOLDEN:-}" ]; then

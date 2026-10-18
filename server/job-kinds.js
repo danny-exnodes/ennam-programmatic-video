@@ -2,10 +2,18 @@
 // so each kind must be able to (re)start from params alone — this is what makes
 // "Chạy lại" possible after a restart.
 import * as store from './store.js';
+import { syncProjectBrand } from './brands.js';
 import { registerKind } from './jobs.js';
 import { renderProject } from './render.js';
 import { runDirector } from './director.js';
 import { recordUsage } from './usage.js';
+
+/** Load a project; one that follows its Brand Kit (not locked) is moved to the kit's latest version (#8). */
+export async function loadWithBrand(projectId) {
+  const p = await store.loadProject(projectId);
+  if (await syncProjectBrand(p)) await store.saveProject(p);
+  return p;
+}
 
 /**
  * Shared start of every render-like job: read the project NOW (not at enqueue
@@ -13,7 +21,7 @@ import { recordUsage } from './usage.js';
  * version was used (`job.projectUpdatedAt`).
  */
 export async function loadForRender(projectId, ctx) {
-  const p = await store.loadProject(projectId);
+  const p = await loadWithBrand(projectId);
   if (!p.shots.length) throw new Error('Dự án chưa có shot nào');
   ctx.set({ projectUpdatedAt: p.updatedAt || null });
   ctx.log(`Dùng dự án lúc ${p.updatedAt || '?'}`);
@@ -45,7 +53,7 @@ export function registerDefaultKinds() {
     // params: { request, shotId, review } — old jobs may carry `brief` (string = legacy request);
     // the structured brief is read from the project itself (project.brief) when the job starts.
     run: async ({ brief = '', request, shotId = null, review = true }, ctx) => {
-      const p = await store.loadProject(ctx.job.projectId);
+      const p = await loadWithBrand(ctx.job.projectId);
       const next = await runDirector(p, { brief, request, shotId, review, log: ctx.log, progress: ctx.progress, signal: ctx.signal });
       const userId = ctx.job.userId || null;
       if (next.lastDirector) {
