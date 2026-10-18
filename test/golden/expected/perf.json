@@ -30,6 +30,10 @@
     "tet": {
       "msPerFrame": 14.32,
       "norm": 0.2057
+    },
+    "sky": {
+      "msPerFrame": 91.72,
+      "norm": 1.539
     }
   }
 }

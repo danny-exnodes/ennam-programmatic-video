@@ -187,6 +187,30 @@ s.fx.leak({ intensity: 0.18, seed: 3 });
 s.text(headline, { x: W * 0.08, y: H * 0.85, size: 64, weight: 700, anim: 'rise', start: 0.5, maxWidth: W * 0.84, maxLines: 1 });
 `,
   },
+  sunset: {
+    name: 'Hoàng hôn',
+    desc: 'Trời vật lý giờ hoàng hôn, mây 2 lớp ánh nắng, mặt nước phản chiếu, tiêu đề',
+    duration: 5,
+    // physical sky (timeOfDay preset, issue #39): no colour codes needed. Not a director few-shot example.
+    code: ({ headline }) => `
+const { W, H } = s;
+${headlineField(headline || 'Khoảnh khắc *hoàng hôn*')}
+const e = s.ease.inOutSine(s.p);
+const sc = s.nature({
+  timeOfDay: 'sunset',
+  sky: { model: 'physical', clouds: { cover: 0.4, high: 0.4, speed: 1.5 } },
+  sun: { azimuth: 0.1 },
+  camera: { height: 0.7, pitch: -0.03, fov: 48, x: s.lerp(-0.2, 0.2, e), yaw: s.lerp(-0.06, 0.06, e), focus: 6, aperture: 4 },
+  wind: { speed: 1.2, dir: 0.2, seed: 4 },
+});
+sc.sky();
+sc.treeline({ z: 24, height: 4.5, color: '#2b3a22' });
+sc.water({ flow: [0.25, 0], depth: 0.5, farZ: 23.6 });
+sc.reeds({ x: [-2.6, -1.6], z: [1.8, 3.2], count: 22, height: [0.4, 0.95] });
+sc.render();
+s.text(headline, { x: W * 0.5, y: H * 0.2, size: 84, weight: 700, align: 'center', anim: 'blur', start: 0.6, dur: 1, out: s.d - 0.6, maxWidth: W * 0.8, maxLines: 2 });
+`,
+  },
 };
 
 const BASE_TEMPLATES = [

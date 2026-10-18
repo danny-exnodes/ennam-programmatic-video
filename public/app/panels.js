@@ -445,6 +445,7 @@ const SCENE_LIST = [
   ['drip', 'Giọt từ ống nhỏ giọt', 'Giọt căng, thắt cổ, rơi theo chu kỳ'],
   ['cta', 'Kêu gọi hành động', 'Sản phẩm + tiêu đề + nút CTA'],
   ['kenburns', 'Ảnh chuyển động', 'Camera đẩy chậm, bụi, light leak, chú thích'],
+  ['sunset', 'Hoàng hôn', 'Trời vật lý, mây 2 lớp ánh nắng, mặt nước phản chiếu'],
 ];
 function scenes() {
   const p = state.project;

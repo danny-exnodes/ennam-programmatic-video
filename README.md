@@ -79,7 +79,7 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 
 - **Đạo diễn AI** — nút **⚡ Xem nhanh** (bản nháp 12 fps, 1/3 độ phân giải, không motion blur, phát ngay trong editor, không vào danh sách bản xuất) cạnh **⬇ Xuất MP4**; dòng *Cache render* hiện dung lượng cache đoạn của dự án + link **Xoá cache**. Form **Brief** có cấu trúc (sản phẩm/sự kiện, thông điệp chính, cảm xúc dạng chip chọn nhiều + tự nhập, thời lượng, kênh/tỉ lệ khung, CTA, ghi chú tự do) lưu cùng dự án (`project.brief`, tự lưu như mọi chỉnh sửa, có trong Lịch sử, mở từ máy khác vẫn còn); khi đã có shot thêm ô *Yêu cầu sửa lần này* → Claude dựng/sửa cả video; Contact sheet; Xuất MP4; danh sách bản đã xuất; Storyboard. Brief cũ chỉ nằm trong `sessionStorage` của trình duyệt được tự chuyển vào *Ghi chú tự do* một lần khi mở dự án.
 - **Nhanh** — dựng ngay từ công thức (Quảng cáo sản phẩm, Teaser, Recap sự kiện) không cần AI. Bộ lọc **Theo mùa** hiện các bộ mẫu mùa sự kiện; chọn công thức theo mùa thì form chuyển sang thông tin khách (công ty, tên sự kiện, dòng phụ, chủ đề, ngày giờ, địa điểm, màu nhấn) và điền sẵn vào trường sửa được của mọi shot.
-- **Mẫu cảnh** — chèn cảnh mẫu (giọt rơi vương miện, rót chất lỏng, sản phẩm rơi nảy, bùng nổ thành phần, 3 lợi ích, CTA, Ken Burns); bộ lọc **Theo mùa** hiện cảnh của từng bộ mẫu mùa.
+- **Mẫu cảnh** — chèn cảnh mẫu (giọt rơi vương miện, rót chất lỏng, sản phẩm rơi nảy, bùng nổ thành phần, 3 lợi ích, CTA, Ken Burns, Hoàng hôn — trời vật lý `timeOfDay`); bộ lọc **Theo mùa** hiện cảnh của từng bộ mẫu mùa.
 - **Media** — tải ảnh/video/nhạc. Đặt tên & mô tả để đạo diễn hiểu vai trò. PNG nền trong suốt cho sản phẩm.
 - **Lồng tiếng** — câu thoại trên timeline, tạo giọng AI hoặc tải thu âm.
 - **Nhạc** — nhạc nền, âm lượng, fade.
@@ -200,7 +200,7 @@ Mọi route nằm sau đăng nhập (thành viên nào cũng quản lý được
 
 ### Golden-frame (kiểm tra hình ảnh tự động)
 
-`npm run check` render các fixture trong `test/golden/fixtures/` (chất lỏng, chữ tiếng Việt, `s.photo` với ảnh/depth/mask/flow tổng hợp, thiên nhiên WebGL, hậu kỳ, mẫu Year End: đèn sân khấu + pháo giấy kim tuyến) ở scale 0.25 và so với ảnh trong `test/golden/expected/`:
+`npm run check` render các fixture trong `test/golden/fixtures/` (chất lỏng, chữ tiếng Việt, `s.photo` với ảnh/depth/mask/flow tổng hợp, thiên nhiên WebGL, trời vật lý + mây 2 lớp (`sky`), hậu kỳ, mẫu Year End: đèn sân khấu + pháo giấy kim tuyến) ở scale 0.25 và so với ảnh trong `test/golden/expected/`:
 
 - **Khớp ảnh** — pixel lệch > 8/255 bị tính là sai; quá 0.1% số pixel → FAIL. Ảnh `*.actual.png`, `*.expected.png`, `*.diff.png` (đỏ = lệch quá ngưỡng, vàng = lệch nhỏ) ở `test/golden/out/` (CI tải lên artifact `golden-diff`).
 - **Tất định** — mỗi khung render 2 lần ở 2 trang mới → phải giống hệt từng bit. Lần thứ 3 theo thứ tự ngược cũng phải giống hệt (mỗi khung là hàm thuần của `t`, không phụ thuộc khung nào đã render trước — tua, xuất song song); lệch → FAIL, ảnh ở `test/golden/out/*.order-reverse.png`.

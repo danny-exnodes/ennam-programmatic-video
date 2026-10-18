@@ -1,0 +1,56 @@
+{
+  "id": "gsky",
+  "name": "Golden · trời vật lý + mây 2 lớp (#39)",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "style": {
+    "grade": "none",
+    "vignette": 0,
+    "grain": 0,
+    "bloom": 0,
+    "letterbox": 0,
+    "palette": {
+      "primary": "#f08a12",
+      "accent": "#f5b54a",
+      "text": "#ffffff"
+    }
+  },
+  "assets": [],
+  "voice": [],
+  "music": null,
+  "exports": [],
+  "shots": [
+    {
+      "id": "gsky0",
+      "transition": {
+        "type": "cut"
+      },
+      "name": "Hoàng hôn trên suối",
+      "duration": 2,
+      "code": "const e = s.ease.inOutSine(s.p);\nconst sc = s.nature({\n  timeOfDay: 'sunset',\n  camera: { height: 0.6, pitch: -0.04, fov: 50, yaw: s.lerp(-0.12, 0.12, e), focus: 4, aperture: 6 },\n  wind: { speed: 1.6, dir: 0.25, seed: 3 },\n  sun: { azimuth: 0.15 },\n  sky: { model: 'physical', haze: 0.45, clouds: { cover: 0.45, low: 1, high: 0.4, speed: 2, seed: 2 } },\n});\nsc.sky();\nsc.treeline({ z: 20, height: 5, color: '#2b4123' });\nsc.water({ flow: [0.4, 0], depth: 0.4, color: '#20402e', farZ: 19.6 });\nsc.render();"
+    },
+    {
+      "id": "gsky1",
+      "transition": {
+        "type": "cut"
+      },
+      "name": "Núi rừng giờ vàng",
+      "duration": 2,
+      "code": "const sc = s.nature({\n  timeOfDay: 'golden',\n  camera: { height: 1.2, pitch: 0.0, fov: 50, yaw: s.lerp(0.2, -0.1, s.p), focus: 30, aperture: 4 },\n  sun: { azimuth: 0.4 },\n  sky: { clouds: { cover: 0.35, high: 0.5 } },\n});\nsc.landscape({ forestZ: 40, treeHeight: 10, mist: 0.3 });\nsc.water({ flow: [0.3, 0], depth: 0.5, farZ: 39.5 });\nsc.render();"
+    }
+  ],
+  "golden": {
+    "frames": [
+      {
+        "t": 0.5
+      },
+      {
+        "t": 1.6
+      },
+      {
+        "t": 3.0
+      }
+    ]
+  }
+}

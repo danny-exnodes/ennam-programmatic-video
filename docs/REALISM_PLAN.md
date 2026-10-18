@@ -50,6 +50,14 @@ Chi phí: ~1–1.8 s/mẫu ở 1080p trên 2 nhân CPU (nước tô ở 0.5–0.
 - `sc.cutout()` / `sc.plate()` trong `s.nature`: ảnh thật làm cây cắt nền uốn theo gió hoặc phông xa được mặt nước phản chiếu.
 - Ví dụ: `examples/tvc-en-nam-real/`.
 
+## 2d. Đợt 4 — trời vật lý & mây 2 lớp (#39)
+
+- `fx/sky.js`: bầu trời tán xạ khí quyển theo **Hillaire 2020** — LUT transmittance (tham số hoá (r, μ) của Bruneton–Neyret 2008), LUT tán xạ bội (ψms = L₂/(1 − fms), bậc hai đẳng hướng), LUT sky-view (vĩ độ dồn mẫu quanh chân trời). Rayleigh (pha 3/16π(1+cos²θ)), Mie (pha Cornette–Shanks, họ Henyey–Greenstein, mật độ nhân theo `haze`), hấp thụ ozone (cấu hình lều 25 km). Hằng số môi trường Trái Đất lấy từ bài báo. LUT tính bằng JS **một lần cho mỗi (độ cao mặt trời, haze)**, cache theo khoá chính xác; cùng dữ liệu nạp vào mọi context WebGL2 (pass trời, pass núi rừng) và đường CPU dự phòng.
+- Mây: 2 lớp mỏng (tích ~1.5 km, ti ~8 km) giao tia với vỏ cầu, mẫu từ một tile nhiễu tuần hoàn cố định (fbm + Worley đảo, cân bằng histogram để `cover` ≈ tỉ lệ phủ) có mipmap (chống răng cưa/nhấp nháy khi lia), lọc B-spline bậc ba khi phóng to. Tự đổ bóng Beer–Lambert bằng 3 mẫu dọc hướng nắng; tán xạ bội xấp xỉ theo tổng octave của **Wrenninge et al. 2013** ("Oz: The Great and Volumetric"); pha HG hai thuỳ → viền bạc khi ngược sáng; màu nắng tại độ cao mây lấy từ transmittance (mây ti vẫn hồng sau khi mặt trời lặn). Trôi = hàm thuần của `t` và gió.
+- Phơi sáng tự động theo độ cao mặt trời (luminance trung bình của LUT → key giảm sau hoàng hôn), cân bằng trắng "phim ánh sáng ngày" sau khi lặn (giờ xanh), tonemap ACES (xấp xỉ Narkowicz).
+- Không chép/dịch mã của [Noniv/web-ocean](https://github.com/Noniv/web-ocean) (MIT) — chỉ tham khảo hướng tiếp cận qua `docs/research/web-ocean.md`; mã viết lại từ các công bố trên.
+- Tài liệu tham khảo: S. Hillaire, *A Scalable and Production Ready Sky and Atmosphere Rendering Technique*, EGSR 2020 · E. Bruneton, F. Neyret, *Precomputed Atmospheric Scattering*, EGSR 2008 · W. Cornette, J. Shanks, *Physically reasonable analytic expression for the single-scattering phase function*, Applied Optics 1992 · L. Henyey, J. Greenstein, *Diffuse radiation in the galaxy*, ApJ 1941 · M. Wrenninge, C. Kulla, V. Lundqvist, *Oz: The Great and Volumetric*, SIGGRAPH 2013 Talks · K. Narkowicz, *ACES Filmic Tone Mapping Curve*, 2016.
+
 ## 3. Lộ trình tiếp theo (đề xuất, theo thứ tự lợi ích/chi phí)
 
 1. **Nước gần camera bằng mô phỏng GPU** — chuyển mô phỏng trường độ cao lên shader (ping-pong texture) để tăng lưới lên 1024² và có thêm tương tác vật nổi ↔ sóng (lá bị sóng đẩy). Ước tính 2–3 ngày.
