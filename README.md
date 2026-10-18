@@ -34,7 +34,7 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 | `DIRECTOR_MODEL` | Mặc định `claude-opus-5-5` |
 | `DIRECTOR_PROMPT_CACHE` | Prompt caching cho đạo diễn (mặc định bật); đặt `0` để tắt khi đo đối chứng |
 | `DIRECTOR_CONCURRENCY` | Số job đạo diễn chạy đồng thời (mặc định 2); job vượt giới hạn xếp hàng FIFO. Render luôn chạy từng job một |
-| `JOBS_TEST_KINDS` | Chỉ dùng cho `scripts/test-jobs.js` (`1` = bật kind job giả và `POST /api/test/jobs`); không bật trên server thật |
+| `JOBS_TEST_KINDS` | Chỉ dùng cho test (`scripts/test-jobs.js`, `test-auth.js`, `test-budget.js`; `1` = bật kind job giả và `POST /api/test/jobs`); không bật trên server thật |
 | `APP_PASSWORD` | Mật khẩu chung cũ (Basic Auth, user bất kỳ). Khi chưa có tài khoản: bắt buộc cho cả team. Khi đã có tài khoản: còn được chấp nhận 30 ngày rồi bị bỏ — xem [Tài khoản](#tài-khoản--đăng-nhập) |
 | `COOKIE_SECURE` | `1` = cookie phiên luôn có cờ `Secure`; bỏ trống = tự bật khi request qua HTTPS hoặc `X-Forwarded-Proto: https` |
 | `TRUST_PROXY` | Đặt khi chạy sau reverse proxy / Cloudflare Tunnel (vd. `loopback` hoặc `1`) để rate limit đăng nhập theo IP thật (giá trị `trust proxy` của Express) |
@@ -60,10 +60,18 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 ```
 
 - **Đăng nhập** ở `/login.html` → cookie phiên (HttpOnly, SameSite=Lax, 14 ngày, tự gia hạn khi dùng; phiên lưu phía server ở `DATA_DIR/sessions/`). Sai quá 10 lần / 15 phút / IP bị chặn tạm.
-- **Tài khoản** (nút trên thanh trên cùng): đổi mật khẩu, xem token đạo diễn đã dùng trong tháng, tạo / thu hồi **API token cá nhân** (`Authorization: Bearer ems_…`, dùng cho script hoặc app mobile). Token chỉ hiện một lần khi tạo; server chỉ lưu SHA-256.
-- **Quản trị** (admin): thêm tài khoản, khoá / mở khoá, đặt lại mật khẩu, xem token đạo diễn AI theo người theo tháng. Khoá một người → phiên và token của người đó bị từ chối ngay (sửa `users.json` từ ngoài: trong `AUTH_CACHE_MS`, mặc định 30 s).
-- Usage đạo diễn ghi ở job (`job.usage`, `job.userId`) và cộng dồn vào `DATA_DIR/usage/<YYYY-MM>.jsonl` (`{ at, userId, projectId, jobId, usage }`, không có brief hay secret) — job bị dọn sau 6 giờ nhưng log tháng thì giữ.
+- **Tài khoản** (nút trên thanh trên cùng): đổi mật khẩu, xem chi phí AI tháng này (thanh đã dùng / hạn mức / %) và token đạo diễn đã dùng, tạo / thu hồi **API token cá nhân** (`Authorization: Bearer ems_…`, dùng cho script hoặc app mobile). Token chỉ hiện một lần khi tạo; server chỉ lưu SHA-256.
+- **Quản trị** (admin): thêm tài khoản, khoá / mở khoá, đặt lại mật khẩu, xem token + USD + % hạn mức đạo diễn AI theo người theo tháng, đặt hạn mức và "Nới hạn mức" (xem [Hạn mức chi phí AI](#hạn-mức-chi-phí-ai)). Khoá một người → phiên và token của người đó bị từ chối ngay (sửa `users.json` từ ngoài: trong `AUTH_CACHE_MS`, mặc định 30 s).
+- Usage đạo diễn ghi ở job (`job.usage`, `job.usageUsd`, `job.userId`) và cộng dồn vào `DATA_DIR/usage/<YYYY-MM>.jsonl` (`{ at, userId, projectId, jobId, usage, model, usd, pricingVersion }`, không có brief hay secret; tháng theo giờ Việt Nam) — job bị dọn sau 6 giờ nhưng log tháng thì giữ.
 - Dữ liệu trước khi có tài khoản (snapshot Lịch sử, job không có `userId`) vẫn hiển thị, người thực hiện là **"không rõ"**.
+
+### Hạn mức chi phí AI
+
+Mỗi lần chạy đạo diễn được quy ra **USD ước tính** ngay lúc ghi usage, theo bảng giá `config/pricing.json` (giá chính thức của Anthropic theo model × 4 loại token: input, output, ghi cache 5 phút, đọc cache; có `version`, `source`, `verifiedAt`). Mỗi dòng usage lưu `usd` + `pricingVersion`, nên đổi bảng giá **không** làm đổi số tháng cũ. Cần đổi giá mà không deploy: đặt `DATA_DIR/pricing.json` cùng cấu trúc (`version` mới + `models` cần ghi đè). Model không có trong bảng → tính theo giá của `DIRECTOR_MODEL` và log cảnh báo. Dòng usage cũ (trước khi có USD) được ước tính theo bảng giá hiện tại (đánh dấu `*` trên bảng Quản trị).
+
+- **Hạn mức tháng** (USD, tháng theo giờ Việt Nam UTC+7, tự reset đầu tháng) đặt trên trang Quản trị: mặc định theo vai trò (`member`, `admin`), hạn mức riêng từng người (để trống = không giới hạn, "Theo vai trò" = bỏ ghi đè), và nhóm **"Chung"** cho usage chưa gắn người (mật khẩu chung `APP_PASSWORD` / chế độ mở). Lưu ở `DATA_DIR/budgets.json`, có hiệu lực ngay. **Chưa đặt gì = không giới hạn** (hành vi như trước).
+- **≥ 80%**: banner cảnh báo trên thanh trên cùng và trang Tài khoản. **≥ 100%**: tạo job đạo diễn mới (cả "Chạy lại") bị từ chối `402` với thông báo "Đã hết hạn mức tháng — liên hệ admin", không job nào được xếp hàng; job đang chạy vẫn chạy hết (có thể vượt nhẹ).
+- **Nới hạn mức**: admin bấm "Nới hạn mức" trên bảng usage, nhập số USD + lý do → cộng vào hạn mức **tháng hiện tại** của người đó (hoặc nhóm "Chung"), có hiệu lực ngay. Nhật ký `DATA_DIR/budget-log.jsonl` (ai / khi nào / bao nhiêu / lý do) hiện ở trang Quản trị.
 
 **Chuyển tiếp từ `APP_PASSWORD`:**
 
@@ -139,6 +147,7 @@ node scripts/frame.js <projectId> <shot> 0.5,1.2 out   # khung full-res của 1 
 node scripts/bench.js <projectId> 3              # đo thời gian render từng shot
 node scripts/ui-shot.js "#p=<projectId>"         # chụp giao diện
 node scripts/test-auth.js                        # test tài khoản: 401, đăng nhập, rate limit, chuyển tiếp APP_PASSWORD, khoá user, token băm, userId trên job/lịch sử (tự bật server con)
+node scripts/test-budget.js                      # test hạn mức chi phí AI: USD theo bảng giá (tính tay), tháng UTC+7, cảnh báo 80% / chặn 100%, nới hạn mức, restart (tự bật server con)
 node scripts/test-jobs.js                        # test hàng đợi job: restart → interrupted, giới hạn song song, huỷ, render đọc project lúc chạy, SSE (tự bật server con)
 node scripts/test-director-cache.js              # test offline: cache_control + cộng dồn token của đạo diễn (không gọi API)
 node scripts/test-director-review.js             # test offline vòng duyệt: approve_cut / patch_shots, prefix cache giống hệt mọi lượt, guard vòng cuối (stub client + stub render thử)
@@ -165,7 +174,7 @@ Mặc định mỗi brief chạy 2 lần (không cache rồi có cache) và in b
 | `GET /api/jobs?project=<id>` · `GET /api/jobs/:id` | Trạng thái job: `queued` → `running` → `done` / `error` / `cancelled`, hoặc `interrupted` (server khởi động lại khi job đang chạy/chờ) |
 | `POST /api/jobs/:id/cancel` | Huỷ job đang chạy hoặc đang chờ (job chờ bị huỷ không bao giờ chạy) |
 | `POST /api/jobs/:id/retry` | "Chạy lại": tạo job mới cùng `kind` + `params` (trường `retryOf` trỏ về job cũ) |
-| (mọi job) | `userId` người tạo (null = job cũ / không đăng nhập) + `userName` tên hiển thị; job đạo diễn xong có `usage` (tổng 4 trường token) |
+| (mọi job) | `userId` người tạo (null = job cũ / không đăng nhập) + `userName` tên hiển thị; job đạo diễn xong có `usage` (tổng 4 trường token), `usageUsd`, `usageModel`, `pricingVersion` |
 | `GET /api/jobs/:id/events` | SSE: `event: job` (JSON job đầy đủ) mỗi khi đổi trạng thái/tiến độ; tự đóng khi job kết thúc; heartbeat `: ping` mỗi 15 s |
 | `GET /api/projects/:id/jobs/events` | SSE theo dự án: `event: jobs` (danh sách ban đầu) rồi `event: job` cho mọi job của dự án |
 
@@ -178,9 +187,12 @@ Job render đọc lại dự án **lúc bắt đầu chạy** (không phải lú
 | `POST /api/auth/login` `{ username, password }` · `POST /api/auth/logout` | Đăng nhập (đặt cookie `ems_session`) / đăng xuất |
 | `GET /api/auth/status` | `{ mode: open\|legacy\|accounts, via, user, banner, transitionEndsAt }` (công khai) |
 | `GET/POST /api/account/tokens` · `DELETE /api/account/tokens/:id` | Token cá nhân: liệt kê / tạo (trả token gốc một lần) / thu hồi |
-| `POST /api/account/password` `{ current, password }` · `GET /api/account/usage?month=YYYY-MM` | Đổi mật khẩu (đăng xuất các phiên khác) · usage của mình |
+| `POST /api/account/password` `{ current, password }` · `GET /api/account/usage?month=YYYY-MM` | Đổi mật khẩu (đăng xuất các phiên khác) · usage của mình: `{ month, jobs, total, usd, warn, budget }` |
+| `GET /api/budget` | Hạn mức của người gọi (không đăng nhập tài khoản → nhóm "Chung"): `{ month, limit, base, raised, source, used, pct, warn, blocked }` (`limit: null` = không giới hạn) |
 | `GET/POST /api/admin/users` · `PATCH /api/admin/users/:id` `{ status, role, name }` · `POST /api/admin/users/:id/password` | Admin: tài khoản, khoá/mở, đặt lại mật khẩu |
-| `GET /api/admin/usage?month=YYYY-MM` | Admin: token đạo diễn theo người trong tháng (`rows[]`, `months[]`) |
+| `GET /api/admin/usage?month=YYYY-MM` | Admin: token + `usd` + `budget` theo người trong tháng (`rows[]`, `months[]`, `pricing`); tháng hiện tại có thêm dòng cho người có hạn mức nhưng chưa dùng |
+| `GET /api/admin/budgets` · `PUT /api/admin/budgets` `{ roles: { member, admin }, shared, users: { <id>: số \| null \| 'role' } }` | Admin: xem / sửa hạn mức (USD/tháng; `null` = không giới hạn; `'role'` = bỏ ghi đè) + nhật ký nới tháng này |
+| `POST /api/admin/budgets/raise` `{ userId \| null, amount, reason }` | Admin: nới hạn mức tháng hiện tại (`userId: null` = nhóm "Chung"); ghi `budget-log.jsonl` |
 
 ### API Brand Kit
 
