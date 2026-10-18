@@ -68,10 +68,12 @@ export function registerDefaultKinds() {
 
   registerKind('render', {
     lane: 'render',
+    // quality 'preview' = "Xem nhanh": written to <project>/preview/ (latest only), not to exports.
+    // result.cache = { segments, reused, frames, reusedFrames, savedSec, … } (per-segment cache, #29)
     run: async ({ quality = 'standard' }, ctx) => {
       const p = await loadForRender(ctx.job.projectId, ctx);
-      const exp = await renderProject(p, { quality, onProgress: ctx.progress, signal: ctx.signal });
-      await saveExport(p.id, exp);
+      const exp = await renderProject(p, { quality, onProgress: ctx.progress, log: ctx.log, signal: ctx.signal });
+      if (!exp.preview) await saveExport(p.id, exp);
       return exp;
     },
   });

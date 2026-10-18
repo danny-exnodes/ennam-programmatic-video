@@ -43,6 +43,7 @@ Yêu cầu: Node ≥ 20, `ffmpeg`/`ffprobe` trong PATH.
 | `PORT` | Mặc định 5173 |
 | `DATA_DIR` | Nơi lưu dự án, chất liệu, video xuất (mặc định `./data`) |
 | `RENDER_WORKERS` | Số trang Chromium render song song (mặc định = số nhân − 1) |
+| `RENDER_CACHE_MAX_MB` | Giới hạn dung lượng cache đoạn render **mỗi dự án** (mặc định 2000 MB, dọn theo LRU); `0` = tắt cache (mọi lần xuất render lại toàn bộ). Xem [Xuất video & cache](#xuất-video--cache-theo-đoạn) |
 | `CHROME_PATH` | Đường dẫn Chromium nếu không dùng bản của Playwright |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | Giọng đọc AI (tiếng Việt tốt) — tuỳ chọn |
 | `OPENAI_API_KEY` | TTS thay thế qua `/audio/speech` — tuỳ chọn |
@@ -76,7 +77,7 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 
 ## Giao diện
 
-- **Đạo diễn AI** — form **Brief** có cấu trúc (sản phẩm/sự kiện, thông điệp chính, cảm xúc dạng chip chọn nhiều + tự nhập, thời lượng, kênh/tỉ lệ khung, CTA, ghi chú tự do) lưu cùng dự án (`project.brief`, tự lưu như mọi chỉnh sửa, có trong Lịch sử, mở từ máy khác vẫn còn); khi đã có shot thêm ô *Yêu cầu sửa lần này* → Claude dựng/sửa cả video; Contact sheet; Xuất MP4; danh sách bản đã xuất; Storyboard. Brief cũ chỉ nằm trong `sessionStorage` của trình duyệt được tự chuyển vào *Ghi chú tự do* một lần khi mở dự án.
+- **Đạo diễn AI** — nút **⚡ Xem nhanh** (bản nháp 12 fps, 1/3 độ phân giải, không motion blur, phát ngay trong editor, không vào danh sách bản xuất) cạnh **⬇ Xuất MP4**; dòng *Cache render* hiện dung lượng cache đoạn của dự án + link **Xoá cache**. Form **Brief** có cấu trúc (sản phẩm/sự kiện, thông điệp chính, cảm xúc dạng chip chọn nhiều + tự nhập, thời lượng, kênh/tỉ lệ khung, CTA, ghi chú tự do) lưu cùng dự án (`project.brief`, tự lưu như mọi chỉnh sửa, có trong Lịch sử, mở từ máy khác vẫn còn); khi đã có shot thêm ô *Yêu cầu sửa lần này* → Claude dựng/sửa cả video; Contact sheet; Xuất MP4; danh sách bản đã xuất; Storyboard. Brief cũ chỉ nằm trong `sessionStorage` của trình duyệt được tự chuyển vào *Ghi chú tự do* một lần khi mở dự án.
 - **Nhanh** — dựng ngay từ công thức (Quảng cáo sản phẩm, Teaser, Recap sự kiện) không cần AI. Bộ lọc **Theo mùa** hiện các bộ mẫu mùa sự kiện; chọn công thức theo mùa thì form chuyển sang thông tin khách (công ty, tên sự kiện, dòng phụ, chủ đề, ngày giờ, địa điểm, màu nhấn) và điền sẵn vào trường sửa được của mọi shot.
 - **Mẫu cảnh** — chèn cảnh mẫu (giọt rơi vương miện, rót chất lỏng, sản phẩm rơi nảy, bùng nổ thành phần, 3 lợi ích, CTA, Ken Burns); bộ lọc **Theo mùa** hiện cảnh của từng bộ mẫu mùa.
 - **Media** — tải ảnh/video/nhạc. Đặt tên & mô tả để đạo diễn hiểu vai trò. PNG nền trong suốt cho sản phẩm.
@@ -99,6 +100,27 @@ echo "$PW" | npm run user:add -- lananh --name "Lan Anh" --password-stdin   # ch
 Mọi chữ, ngày, địa điểm, tên khách, logo và màu nhấn là `s.field` (sửa ở Inspector, không cần AI); bố cục theo tỉ lệ W/H nên chạy cả 16:9 và 9:16. Mẫu theo mùa **không** nằm trong ví dụ few-shot của đạo diễn (giữ system prompt cố định để cache). Thêm bộ mới: tạo `server/templates/seasonal/<mùa>.js` (export `SEASON, DEFAULTS, FORM_FIELDS, SCENES, RECIPES` với `season`) và thêm vào mảng `SEASONAL` trong `server/templates.js`.
 
 Phím tắt: `Space` phát/dừng · `←/→` từng khung (`Shift` = 1 giây) · `Home` về đầu · `Ctrl/⌘+S` lưu.
+
+## Xuất video & cache theo đoạn
+
+| Mức | fps | Độ phân giải | Motion blur | x264 | Dùng cho |
+|---|---|---|---|---|---|
+| **⚡ Xem nhanh** (`preview`) | 12 | 1/3, giữ nhỏ (không phóng lên) | tắt | `ultrafast`, crf 28 | duyệt nhịp / bố cục; lưu ở `preview/` (chỉ giữ bản mới nhất), không vào danh sách bản xuất |
+| Nháp (`draft`) | theo dự án | 1/2 rồi phóng lên | tắt | `veryfast`, crf 23 | duyệt nội bộ |
+| Chuẩn (`standard`) | theo dự án | đầy đủ | 3 mẫu/khung | `medium`, crf 18 | gửi khách |
+| Cao nhất (`high`) | theo dự án | đầy đủ | 6 mẫu/khung | `slow`, crf 15 | màn LED / TVC |
+
+**Cache theo đoạn (#29).** Mỗi lần xuất, timeline được chia thành các *đoạn* khung liên tiếp: phần thân của từng shot, và mỗi vùng chuyển cảnh (kể cả khung có mẫu motion blur vắt qua chỗ cắt thẳng) là một đoạn riêng gắn với cả hai shot kề. Mỗi đoạn được encode thành một MP4 riêng (cùng tham số x264, GOP đóng) và lưu ở `DATA_DIR/projects/<id>/cache/`; lần xuất sau chỉ render các đoạn có đầu vào thay đổi, rồi ghép bằng ffmpeg concat (không encode lại), kiểm tra đủ số khung, sau đó trộn nhạc + lồng tiếng như cũ. Sửa một field ở một shot → chỉ render lại đoạn của shot đó và hai vùng chuyển cảnh kề.
+
+- Khoá của đoạn gồm: phiên bản engine (nội dung `engine/**`, trang render, font, bản Chromium + cờ, bản ffmpeg), mức chất lượng + tham số encoder (fps xuất, scale, số mẫu motion blur, crf, preset), kích thước/fps/style/bảng màu dự án, bản chụp Brand Kit (`project.brand`: id, version, bảng màu, font, logo, outro) cùng **nội dung** file font và logo của kit (font nạp qua FontFace nên không đi qua bước ghi chất liệu đã đọc), khoảng khung, toàn bộ dữ liệu của các shot mà đoạn phụ thuộc (code, `fields`, tên, vị trí, thời điểm bắt đầu, thời lượng, chuyển cảnh — chỉ bỏ `notes`), và **nội dung** (SHA-256) của mọi chất liệu mà đoạn thực sự đọc khi render (trang render ghi lại). Đổi bất kỳ thứ nào → đoạn đó render lại; dời một shot (đổi thời lượng shot trước) → các đoạn phía sau render lại.
+- Job báo `tái sử dụng X/Y đoạn (a/b khung) · tiết kiệm ~Ns`; `job.result.cache` có số liệu chi tiết.
+- Dung lượng: tối đa `RENDER_CACHE_MAX_MB` mỗi dự án (mặc định 2000), đoạn lâu không dùng bị xoá trước (LRU). Xoá dự án là xoá luôn cache; **Xoá cache** trong tab Đạo diễn AI hoặc `DELETE /api/projects/:id/cache`. Xoá thư mục cache giữa lúc đang xuất không làm hỏng bản xuất (đoạn đang dùng đã được hard-link vào thư mục tạm của job).
+
+| Route | Ý nghĩa |
+|---|---|
+| `POST /api/projects/:id/render` `{ quality }` | Tạo job xuất: `preview` \| `draft` \| `standard` \| `high` (giá trị khác → 400) |
+| `GET /api/projects/:id/cache` | `{ segments, bytes, maxBytes }` |
+| `DELETE /api/projects/:id/cache` | Xoá cache đoạn của dự án → `{ ok, freed, segments, bytes, maxBytes }` |
 
 ## Đóng góp
 
@@ -124,6 +146,8 @@ node scripts/test-brief.js                       # test offline brief có cấu 
 node scripts/test-qa.js                          # QA đo được: 5 shot cố ý lỗi phải bị phát hiện + guard vòng cuối (mock, không gọi API)
 node scripts/test-brand.js                       # Brand Kit: CRUD + version, khoá/theo kit mới nhất, cảnh báo giấy phép font, route sau đăng nhập, render headless dùng màu/logo/font kit (so pixel), khối kit trong user turn, QA câu cấm (~6s)
 node scripts/test-seasonal.js                    # mẫu theo mùa: mọi công thức ở 16:9 + 9:16 qua QA inspect, không chữ tràn/đen/trống; Tết thêm lượt nội dung dài nhất (~20s)
+node scripts/test-render-cache.js                # cache theo đoạn: bản ghép từ cache = bản render đầy đủ (ngưỡng golden), invalidation từng loại đầu vào, xoá cache giữa chừng, LRU, Xem nhanh (~30s, cần ffmpeg)
+node scripts/bench-render-cache.js               # đo: xuất đầy đủ vs sửa 1 field rồi xuất lại (dự án demo 6 shot, 20s, standard) và Xem nhanh vs standard (vài phút)
 node --env-file=.env scripts/director-bench.js   # đo token đạo diễn có/không cache trên 3 brief mẫu (tốn phí API thật)
 node --env-file=.env scripts/director-bench.js --review  # so output token vòng duyệt: nộp lại cả bản (cũ) vs approve_cut/patch_shots (tốn phí API thật)
 ```

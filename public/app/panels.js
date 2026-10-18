@@ -1,7 +1,7 @@
 // Left sidebar: tabs (Đạo diễn AI, Nhanh, Mẫu cảnh, Media, Lồng tiếng, Nhạc, Phong cách) + project list.
 import { h, fmt, toast, modal, slider } from './ui.js';
 import { state, on, emit, update, duration, shotStarts, trackJob, retryJob, setProject, selectShot, saveNow } from './state.js';
-import { api, fileUrl, exportUrl } from './api.js';
+import { api, fileUrl, exportUrl, previewUrl } from './api.js';
 import { engine } from './player.js';
 import { MATERIALS, GRADES, ICON_NAMES } from '/engine/engine.js';
 import { whoLabel } from './account.js';
@@ -209,7 +209,9 @@ function director() {
     jobsBox(),
     h('div', { class: 'row' },
       h('button', { onclick: contactSheet }, '🗂 Contact sheet'),
+      h('button', { onclick: () => emit('preview'), title: 'Video nháp 12 fps, 1/3 độ phân giải, không motion blur — xem nhịp và bố cục, không lưu vào danh sách bản xuất' }, '⚡ Xem nhanh'),
       h('button', { class: 'primary', onclick: () => emit('export') }, '⬇ Xuất MP4')),
+    cacheLine(p),
     exportsList.length ? h('div', { class: 'section-title' }, 'Đã xuất') : null,
     h('div', { class: 'list' }, exportsList.slice(0, 8).map((e) => h('div', { class: 'item' },
       h('button', { class: 'icon', onclick: () => playExport(e.file) }, '▶'),
@@ -218,6 +220,32 @@ function director() {
     storyboard(),
   );
 }
+
+// Cache đoạn render (#29): dung lượng + nút "Xoá cache". Xuất lại chỉ render các đoạn đã đổi.
+function cacheLine(p) {
+  const el = h('p', { class: 'small muted', id: 'cacheLine' });
+  const mb = (b) => (b / 1048576).toFixed(b < 10485760 ? 1 : 0);
+  const fill = (st) => el.replaceChildren(
+    `Cache render: ${st.segments} đoạn · ${mb(st.bytes)} MB${st.maxBytes ? ` / ${mb(st.maxBytes)} MB` : ' (tắt)'} `,
+    st.segments ? h('a', {
+      href: '#', title: 'Xoá các đoạn video đã render sẵn của dự án này (lần xuất sau render lại toàn bộ)',
+      onclick: async (e) => {
+        e.preventDefault();
+        if (!confirm('Xoá cache render của dự án này?')) return;
+        try { const r = await api.clearCache(p.id); toast(`Đã xoá cache (${mb(r.freed)} MB)`); fill(r); } catch (err) { toast(err.message, { error: true }); }
+      },
+    }, 'Xoá cache') : null);
+  el.refresh = () => api.cacheStats(p.id).then(fill).catch(() => {});
+  el.refresh();
+  return el;
+}
+const seenRenderJobs = new Set();
+on('jobs', () => {
+  const done = state.jobs.filter((j) => j.kind === 'render' && j.status === 'done' && !seenRenderJobs.has(j.id));
+  if (!done.length) return;
+  done.forEach((j) => seenRenderJobs.add(j.id));
+  document.getElementById('cacheLine')?.refresh?.();
+});
 
 // Tóm tắt token của lần chạy đạo diễn gần nhất (project.lastDirector.usage).
 function usageLine(u) {
@@ -238,7 +266,7 @@ const JOB_STATUS = { error: '❌ lỗi', done: '✅ xong', cancelled: '⏹ đã 
 function fillJobs(box) {
   box.replaceChildren(...state.jobs.map((j) => h('div', { class: 'job' },
     h('div', { class: 'row' },
-      h('strong', {}, j.kind === 'render' ? '⬇ Xuất video' : '🎬 Đạo diễn'),
+      h('strong', {}, j.kind === 'render' ? (j.params?.quality === 'preview' ? '⚡ Xem nhanh' : '⬇ Xuất video') : '🎬 Đạo diễn'),
       whoLabel(j.userName),
       h('span', { class: 'small muted', style: { textAlign: 'right' } }, JOB_STATUS[j.status] || Math.round(j.progress * 100) + '%')),
     h('div', { class: 'bar' }, h('div', { style: { width: Math.round(j.progress * 100) + '%' } })),
@@ -298,6 +326,15 @@ function contactSheet() {
   });
   const url = sheet.toDataURL('image/jpeg', 0.9);
   modal('Contact sheet', h('div', {}, h('img', { src: url }), h('a', { href: url, download: `${p.name}-contact-sheet.jpg` }, h('button', { style: { marginTop: '10px' } }, '⬇ Tải ảnh'))));
+}
+
+/** "Xem nhanh" result: plays in the editor, not part of the exports list (only the latest is kept). */
+export function playPreview(j) {
+  const p = state.project;
+  const c = j.result?.cache;
+  modal('⚡ Xem nhanh', h('div', {},
+    h('video', { src: previewUrl(p, j.result.file), controls: true, autoplay: true, style: { width: '100%' } }),
+    h('p', { class: 'small muted' }, `12 fps · 1/3 độ phân giải · không motion blur${c ? ` · tái sử dụng ${c.reused}/${c.segments} đoạn · ${c.totalSec}s` : ''}. Bản nháp để duyệt nhịp và bố cục — không lưu vào danh sách bản xuất.`)));
 }
 
 export function playExport(file) {

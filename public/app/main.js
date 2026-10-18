@@ -5,7 +5,7 @@ import { api } from './api.js';
 import { engine, refresh, draw, toggle, pause, setPreviewScale, stopAllAudio } from './player.js';
 import { renderTimeline, initTimeline, fitTimeline } from './timeline.js';
 import { renderInspector } from './inspector.js';
-import { renderPanel, playExport, migrateLegacyBrief, reloadBrand } from './panels.js';
+import { renderPanel, playExport, playPreview, migrateLegacyBrief, reloadBrand } from './panels.js';
 import { showBrandKits } from './brands.js';
 import { initAuthUI, whoLabel } from './account.js';
 
@@ -48,7 +48,7 @@ async function openProject(id) {
 
 function onJobDone(j) {
   if (j.projectId !== state.project?.id || j.status !== 'done') return;
-  if (j.kind === 'render') api.get(state.project.id).then((p) => { state.project.exports = p.exports; renderPanel(); });
+  if (j.kind === 'render' && !j.result?.preview) api.get(state.project.id).then((p) => { state.project.exports = p.exports; renderPanel(); });
   else if (j.kind === 'director' && j.retryOf && j.result?.project) setProject(j.result.project);
 }
 on('jobdone', onJobDone);
@@ -156,6 +156,22 @@ on('export', () => {
     h('div', { class: 'card', onclick: () => pick('standard') }, h('strong', {}, '🎬 Chuẩn'), h('div', { class: 'muted' }, `${p.width}×${p.height} · ${p.fps}fps · motion blur 3 mẫu/khung. Dùng để gửi khách.`)),
     h('div', { class: 'card', onclick: () => pick('high') }, h('strong', {}, '💎 Cao nhất'), h('div', { class: 'muted' }, 'Motion blur 6 mẫu/khung, bitrate cao. Chậm hơn ~2 lần, cho màn LED / TVC.')),
   ));
+});
+
+// ---- "Xem nhanh" (quality 'preview'): 12 fps, 1/3 res, no motion blur; reuses the segment cache ----
+on('preview', async () => {
+  const p = state.project;
+  if (!p.shots.length) return toast('Chưa có shot nào để xem', { error: true });
+  await saveNow();
+  try {
+    const job = await api.render(p.id, 'preview');
+    emit('tab', 'director');
+    toast('Đang dựng bản xem nhanh…');
+    trackJob(job, (j) => {
+      if (j.status === 'done') playPreview(j);
+      else toast('Xem nhanh lỗi: ' + j.error, { error: true, ms: 10000 });
+    });
+  } catch (e) { toast(e.message, { error: true }); }
 });
 
 function showExports() {

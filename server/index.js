@@ -10,6 +10,8 @@ import * as brands from './brands.js';
 import { kindOf, probe, normalizeImage } from './media.js';
 import { initJobs, createJob, getJob, publicJob, listJobs, cancelJob, retryJob, hasKind, jobEvents, TERMINAL, DIRECTOR_CONCURRENCY } from './jobs.js';
 import { registerDefaultKinds } from './job-kinds.js';
+import { QUALITIES } from './render.js';
+import { cacheStats, clearCache } from './render-cache.js';
 import { directorAvailable, DIRECTOR_MODEL } from './director.js';
 import { synthesize, ttsAvailable, listVoices } from './tts.js';
 import { TEMPLATES, SEASONS, SEASONAL_SCENES, buildFromTemplate } from './templates.js';
@@ -106,7 +108,7 @@ app.get('/brands/:id/files/:file', (req, res, next) => {
 });
 app.get('/files/:id/:kind/:file', (req, res, next) => {
   try {
-    if (!['assets', 'exports'].includes(req.params.kind)) return res.status(404).end();
+    if (!['assets', 'exports', 'preview'].includes(req.params.kind)) return res.status(404).end();
     const f = path.join(store.projectDir(req.params.id), req.params.kind, path.basename(req.params.file));
     if (!fs.existsSync(f)) return res.status(404).end();
     if (req.query.download) res.attachment(path.basename(f));
@@ -356,7 +358,20 @@ app.post('/api/projects/:id/render', wrap(async (req, res) => {
   const p = await store.loadProject(req.params.id);
   if (!p.shots.length) return res.status(400).json({ error: 'Dự án chưa có shot nào' });
   const quality = req.body?.quality || 'standard';
+  if (!QUALITIES[quality]) return res.status(400).json({ error: `quality không hợp lệ (${Object.keys(QUALITIES).join(', ')})` });
   res.json(pub(createJob('render', p.id, { quality }, { userId: uid(req) })));
+}));
+
+// --- per-segment render cache (#29) ---
+app.get('/api/projects/:id/cache', wrap(async (req, res) => {
+  await store.loadProject(req.params.id);
+  res.json(await cacheStats(req.params.id));
+}));
+app.delete('/api/projects/:id/cache', wrap(async (req, res) => {
+  await store.loadProject(req.params.id);
+  // safe while an export runs: segments in use are hard-linked into the job's work dir
+  const freed = await clearCache(req.params.id);
+  res.json({ ok: true, freed, ...(await cacheStats(req.params.id)) });
 }));
 
 app.delete('/api/projects/:id/exports/:file', wrap(async (req, res) => {
