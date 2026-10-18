@@ -13,7 +13,7 @@ import crypto from 'node:crypto';
 import { FFMPEG, FFPROBE, run } from './media.js';
 import { projectDir } from './store.js';
 import { renderAuthHeaders } from './auth.js';
-import { planSegments, segmentKey, engineVersion, assetTable, lookup, touch, store, enforceCap, cacheDir, cacheMaxBytes } from './render-cache.js';
+import { planSegments, segmentKey, engineVersion, assetTable, brandInputs, lookup, touch, store, enforceCap, cacheDir, cacheMaxBytes } from './render-cache.js';
 
 let browserP = null;
 
@@ -175,13 +175,14 @@ async function renderVideo({ project, q, outFps, total, workDir, useCache, prog,
   const cdir = cacheDir(project.id);
   const table = await assetTable(project);
   const engineV = useCache ? await engineVersion(findChrome()) : '';
+  const brand = useCache ? await brandInputs(project) : null;
   const encoder = { args: encArgs, mb: q.mb, scale: q.scale, upscale: q.upscale !== false };
   const reusedFiles = [];
   for (const [i, s] of segs.entries()) {
     s.file = path.join(workDir, `seg-${String(i).padStart(4, '0')}.mp4`);
     s.frames = s.f1 - s.f0;
     if (!useCache) continue;
-    s.key = segmentKey(project, s, { engine: engineV, encoder, outFps });
+    s.key = segmentKey(project, s, { engine: engineV, encoder, outFps, brand });
     const hit = await lookup(cdir, s.key, table);
     if (!hit) continue;
     // pin: hard link into this job's work dir, so deleting / evicting the cache from now

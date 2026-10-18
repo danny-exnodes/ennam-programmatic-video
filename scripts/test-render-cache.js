@@ -12,7 +12,8 @@
 //      no frame shifted/dropped at segment joins.
 //   2. invalidation — changing each input type (code, field, asset content, style, fps)
 //      re-renders exactly the segments that depend on it (job stats), the rest is
-//      reused; an unrelated asset / unchanged project re-renders nothing. The render
+//      reused; an unrelated asset / unchanged project re-renders nothing. Brand Kit: assigning a
+//      kit, changing kit color / font, the CONTENT of the kit font file or logo → every segment. The render
 //      page trace of every rendered segment equals its predicted shot set.
 //   3. robustness — the cache folder deleted mid-export → export still succeeds.
 //   4. LRU cap (RENDER_CACHE_MAX_MB) + "Xoá cache" endpoint + "Xem nhanh" job over HTTP
@@ -24,7 +25,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import sharp from 'sharp';
-import { pinnedChrome, usePinnedChrome, startTempServer } from './lib/test-env.js';
+import { pinnedChrome, usePinnedChrome, startTempServer, ROOT as ROOT_DIR } from './lib/test-env.js';
 
 const CI = !!process.env.CI;
 const GH = !!process.env.GITHUB_ACTIONS;
@@ -232,6 +233,27 @@ async function main() {
       const r = await render(P);
       check(r.cache.reused === 0 && r.cache.frames === Math.round(3.5 * 12), `đổi fps 10 → 12 → render lại mọi đoạn (${r.cache.rendered}/${r.cache.segments}), ${r.cache.frames} khung`);
       P.fps = 10;
+    }
+    // Brand Kit (#8): kit snapshot + uploaded font (FontFace, not read through the asset map) + logo
+    {
+      const FD = path.join(ROOT_DIR, 'node_modules/@fontsource/playfair-display/files');
+      await fsp.copyFile(path.join(FD, 'playfair-display-vietnamese-400-normal.woff2'), path.join(pdir, 'assets/brand-f1.woff2'));
+      await fsp.writeFile(path.join(pdir, 'assets/brand-logo1.png'), await png(250, 250, 250));
+      await expectOnly('gán Brand Kit (màu, font tải lên, logo)', () => {
+        P.brand = { id: 'b1', version: 1, locked: false, kit: {
+          name: 'Kit thử', palette: [{ role: 'primary', color: '#ff0066' }, { role: 'accent', color: '#00ccff' }, { role: 'text', color: '#ffffff' }],
+          fonts: { heading: 'sans', body: 'sans' }, fontFiles: [{ id: 'f1', file: 'brand-f1.woff2', family: 'EmsKitF1', name: 'Kit font' }],
+          logo: { file: 'brand-logo1.png', width: 64, height: 64 },
+        } };
+      }, ALL);
+      await expectOnly('đổi màu kit (text)', () => { P.brand.kit.palette[2].color = '#ffe08a'; P.brand.version = 2; }, ALL);
+      await expectOnly('đổi font kit (body → font tải lên)', () => { P.brand.kit.fonts.body = 'f1'; P.brand.version = 3; }, ALL);
+      await expectOnly('đổi NỘI DUNG file font kit (cùng tên, cùng snapshot)', async () => {
+        await fsp.copyFile(path.join(FD, 'playfair-display-vietnamese-700-normal.woff2'), path.join(pdir, 'assets/brand-f1.woff2'));
+      }, ALL);
+      await expectOnly('đổi NỘI DUNG file logo kit', async () => { await fsp.writeFile(path.join(pdir, 'assets/brand-logo1.png'), await png(10, 10, 10)); }, ALL);
+      await expectOnly('khoá kit (engine không đọc locked)', () => { P.brand.locked = true; }, () => false);
+      delete P.brand;
     }
     check(!mismatchedTrace.length, 'trace của trang render (shot thực sự chạy) = tập shot dự đoán cho mọi đoạn', mismatchedTrace.slice(0, 3).join(' | '));
 

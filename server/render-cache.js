@@ -126,7 +126,29 @@ export async function assetTable(project) {
     const h = await fileHash(path.join(dir, 'assets', a.file));
     out[a.name] = `${a.type}:${h || 'missing'}`;
   }
+  // Brand Kit logo (#8): loaded by the render page as asset 'brand-logo' from assets/brand-*
+  // (not in project.assets) → same traced dependency as any image asset
+  const logo = project.brand?.kit?.logo?.file;
+  if (logo) out['brand-logo'] = `image:${(await fileHash(path.join(dir, 'assets', path.basename(logo)))) || 'missing'}`;
   return out;
+}
+
+/**
+ * Brand Kit inputs that are NOT read through the asset map: the kit snapshot itself (palette,
+ * fonts, outro… → s.palette / s.brand / default text fonts of every shot) and the CONTENT of
+ * uploaded font files (registered as FontFace by the render page, used by any s.text). Part of
+ * key1 of every segment. The logo is also hashed here (conservative; it is traced as well).
+ */
+export async function brandInputs(project) {
+  const b = project.brand;
+  const kit = b?.kit && typeof b.kit === 'object' ? b.kit : null;
+  if (!kit) return null;
+  const dir = path.join(projectDir(project.id), 'assets');
+  const files = {};
+  for (const f of [kit.logo?.file, ...(kit.fontFiles || []).map((x) => x?.file)]) {
+    if (f) files[f] = (await fileHash(path.join(dir, path.basename(f)))) || 'missing';
+  }
+  return { id: b.id ?? null, version: b.version ?? null, kit, files };
 }
 
 // ---------------------------------------------------------------- timeline plan
@@ -193,7 +215,7 @@ export function planSegments(project, { outFps, mb = 1, total }) {
 const SHOT_IGNORED = new Set(['notes', 'needsReview']); // never read by the engine
 
 /** First-level key of a segment (everything except asset content, see header). */
-export function segmentKey(project, seg, { engine, encoder, outFps }) {
+export function segmentKey(project, seg, { engine, encoder, outFps, brand = null }) {
   const tl = timelineOf(project);
   const duration = project.shots.reduce((s, x) => s + (x.duration || 0), 0);
   const shots = seg.deps.map((i) => {
@@ -204,6 +226,7 @@ export function segmentKey(project, seg, { engine, encoder, outFps }) {
   return sha(stableJson({
     v: CACHE_FORMAT, engine, encoder, outFps,
     project: { width: project.width, height: project.height, fps: project.fps || 30, style: project.style || {} },
+    brand,
     range: [seg.f0, seg.f1],
     clampDuration: seg.clamped ? duration : null,
     shots,
