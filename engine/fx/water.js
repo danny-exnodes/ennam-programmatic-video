@@ -105,9 +105,13 @@ export class WaveSim {
     this.impulses = (o.impulses || []).slice().sort((a, b) => a.t - b.t);
     this.n = 0;
     this.ptr = 0; // next impulse to apply
+    // Snapshots of the full sim state (heights, velocities AND the impulse
+    // cursor) every snapEvery steps. at(t) resumes from the latest snapshot at
+    // or before t and replays the same fixed steps, so the state at t is a pure
+    // function of t whatever was rendered before (scrubbing, parallel workers).
     this.snaps = new Map();
     this.snapEvery = Math.max(1, Math.round(0.25 / this.dt));
-    this.snaps.set(0, { h: this.h.slice(), v: this.v.slice() });
+    this.snaps.set(0, { h: this.h.slice(), v: this.v.slice(), ptr: 0 });
     this.out = new Float32Array(n); // texture payload
   }
 
@@ -121,15 +125,17 @@ export class WaveSim {
       this.h.set(s.h);
       this.v.set(s.v);
       this.n = best;
-      const tb = best * this.dt;
-      this.ptr = 0;
-      while (this.ptr < this.impulses.length && this.impulses[this.ptr].t <= tb) this.ptr++;
+      // restore the cursor as it was, instead of re-deriving it from the time:
+      // the first step applies every impulse with t <= dt (incl. t <= 0, e.g.
+      // leaves that landed before the shot), which "t <= best*dt" skipped
+      // when rewinding to step 0 (#18)
+      this.ptr = s.ptr;
     }
     while (this.n < target) {
       this.step();
       this.n++;
       if (this.n % this.snapEvery === 0 && !this.snaps.has(this.n)) {
-        this.snaps.set(this.n, { h: this.h.slice(), v: this.v.slice() });
+        this.snaps.set(this.n, { h: this.h.slice(), v: this.v.slice(), ptr: this.ptr });
         if (this.snaps.size > 160) {
           // drop the oldest non-zero snapshot
           for (const k of this.snaps.keys()) if (k !== 0) { this.snaps.delete(k); break; }

@@ -23,7 +23,9 @@ const G = 9.81;
 const RHO = 1000;
 const SIGMA = 0.072;
 const cache = new Map();
-const keyOf = (o) => JSON.stringify(o, (k, v) => (typeof v === 'number' ? Math.round(v * 1e5) / 1e5 : v));
+// exact key over every input the simulation reads — a rounded key let nearby
+// specs share whichever result was simulated first (render-order dependence, #18)
+const keyOf = (o) => JSON.stringify(o);
 export function clearDewCache() {
   cache.clear();
 }
@@ -83,7 +85,7 @@ export function leafGeometry(o, phi, chi) {
 }
 
 export function simulateDew(o, wind, until) {
-  const key = 'dew:' + keyOf({ o, until, w: [wind.speed, wind.dir, wind.gusts, wind.gustiness, wind.turbulence, wind.seed] });
+  const key = 'dew:' + keyOf({ o, until, w: [wind.speed, wind.dx, wind.dz, wind.front, wind.gusts, wind.gustiness, wind.turbulence, wind.seed] });
   let res = cache.get(key);
   if (res) return res;
   const r = rng(o.seed ?? 1);

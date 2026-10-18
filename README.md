@@ -157,7 +157,7 @@ Job render đọc lại dự án **lúc bắt đầu chạy** (không phải lú
 `npm run check` render các fixture trong `test/golden/fixtures/` (chất lỏng, chữ tiếng Việt, `s.photo` với ảnh/depth/mask/flow tổng hợp, thiên nhiên WebGL, hậu kỳ, mẫu Year End: đèn sân khấu + pháo giấy kim tuyến) ở scale 0.25 và so với ảnh trong `test/golden/expected/`:
 
 - **Khớp ảnh** — pixel lệch > 8/255 bị tính là sai; quá 0.1% số pixel → FAIL. Ảnh `*.actual.png`, `*.expected.png`, `*.diff.png` (đỏ = lệch quá ngưỡng, vàng = lệch nhỏ) ở `test/golden/out/` (CI tải lên artifact `golden-diff`).
-- **Tất định** — mỗi khung render 2 lần ở 2 trang mới → phải giống hệt từng bit. Lần thứ 3 theo thứ tự ngược chỉ cảnh báo.
+- **Tất định** — mỗi khung render 2 lần ở 2 trang mới → phải giống hệt từng bit. Lần thứ 3 theo thứ tự ngược cũng phải giống hệt (mỗi khung là hàm thuần của `t`, không phụ thuộc khung nào đã render trước — tua, xuất song song); lệch → FAIL, ảnh ở `test/golden/out/*.order-reverse.png`.
 - **Hiệu năng** — ms/khung (đã chuẩn hoá theo một bài đo cố định của máy) so với `test/golden/expected/perf.json`; chậm hơn > 30% → FAIL trên CI, local chỉ WARN.
 
 Chromium được cố định bằng devDependency `@sparticuz/chromium` (phiên bản khóa trong `package-lock.json`, chỉ Linux x64) để máy dev và CI raster giống nhau; font fallback dùng bộ font đi kèm gói.

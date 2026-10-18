@@ -29,7 +29,14 @@ function cached(key, fn) {
 export function clearFoliageCache() {
   cache.clear();
 }
-const keyOf = (o) => JSON.stringify(o, (k, v) => (typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v));
+// Cache keys are EXACT (full-precision JSON, which round-trips doubles) and
+// cover every input the simulation reads. Rounded keys made two slightly
+// different specs (e.g. a leaf area that follows a slowly moving camera) share
+// the result of whichever was simulated FIRST, so a frame depended on what had
+// been rendered before it (#18).
+const keyOf = (o) => JSON.stringify(o);
+/** every wind field windAt() reads */
+const windKey = (w) => [w.speed, w.dx, w.dz, w.front, w.gusts, w.gustiness, w.turbulence, w.seed];
 
 export const LEAF_PALETTES = {
   autumn: ['#c8641c', '#e0a030', '#a8401a', '#d48a28', '#8a5a22', '#e6b84a'],
@@ -45,7 +52,7 @@ export const LEAF_PALETTES = {
  *      seed, flutter (0..2), water:{ farZ, flow:[fx,fz] } | null, until }
  */
 export function simulateLeaves(o, wind) {
-  const key = 'leaves:' + keyOf({ o, w: [wind.speed, wind.dir, wind.gusts, wind.gustiness, wind.turbulence, wind.seed] });
+  const key = 'leaves:' + keyOf({ o, w: windKey(wind) });
   return cached(key, () => {
     const r = rng(o.seed ?? 3);
     const n = o.count ?? 16;
@@ -178,11 +185,14 @@ export function sampleLeaf(lf, t) {
 }
 
 // Leaf outline in local coords: midrib along x from -1 (stem) to +1 (tip).
-const shapeCache = new Map();
-function leafPath(shape, aspect) {
-  const key = shape + ':' + aspect.toFixed(2);
-  let p = shapeCache.get(key);
-  if (p) return p;
+// Memoised on the leaf object itself (which lives in the leaf-sim cache), i.e.
+// keyed by the leaf's EXACT shape + aspect. It used to be a module-level cache
+// keyed by aspect.toFixed(2): leaves whose aspects round to the same key then
+// shared the outline of whichever leaf happened to be drawn FIRST, so a frame
+// depended on which frames had been rendered before it (#18).
+function leafPath(lf) {
+  if (lf._path) return lf._path;
+  const { shape, aspect } = lf;
   const N = 28;
   const pts = [];
   for (let i = 0; i <= N; i++) {
@@ -209,8 +219,8 @@ function leafPath(shape, aspect) {
     veins.moveTo(u0, 0);
     veins.quadraticCurveTo(u0 + 0.18, wv * 0.6, u0 + 0.32, wv);
   }
-  p = { path, veins };
-  shapeCache.set(key, p);
+  const p = { path, veins };
+  Object.defineProperty(lf, '_path', { value: p, enumerable: false });
   return p;
 }
 
@@ -261,7 +271,7 @@ export function drawLeaf3D(ctx, lf, pos, fr, project, light, camPos, o = {}) {
     glow = clamp(diff * 1.1) * (light.translucency ?? 1);
     col = mix(mix(base, '#000000', 0.5), mix(base, '#fff2a0', 0.35), clamp(0.2 + 0.9 * glow));
   }
-  const { path, veins } = leafPath(lf.shape, lf.aspect);
+  const { path, veins } = leafPath(lf);
   ctx.save();
   ctx.globalAlpha *= o.alpha ?? 1;
   ctx.transform(ax, ay, bx, by, pc[0], pc[1]);
@@ -310,7 +320,7 @@ export function drawLeaf3D(ctx, lf, pos, fr, project, light, camPos, o = {}) {
  * baseY, color, seed, stiffness }
  */
 export function simulateReeds(o, wind, until) {
-  const key = 'reeds:' + keyOf({ o, until, w: [wind.speed, wind.dir, wind.gusts, wind.gustiness, wind.seed] });
+  const key = 'reeds:' + keyOf({ o, until, w: windKey(wind) });
   return cached(key, () => {
     const r = rng(o.seed ?? 8);
     const n = o.count ?? 40;

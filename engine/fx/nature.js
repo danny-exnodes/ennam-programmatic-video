@@ -262,7 +262,9 @@ export function natureScene(s, eng, o = {}) {
           area = [cx - span / 2, cz - span / 2, cx + span / 2, cz + span / 2];
         }
         const simOpt = { area, res: waterOpts.simRes ?? 256, speed: waterOpts.rippleSpeed ?? 0.3, damping: waterOpts.rippleDamping ?? 0.5, dispersion: waterOpts.dispersion ?? 1.4, impulses: simImp };
-        sim = getWaveSim(JSON.stringify(simOpt, (k, v) => (typeof v === 'number' ? Math.round(v * 1e5) / 1e5 : v)), simOpt);
+        // exact key: a rounded one let a slightly different impulse set reuse the
+        // sim built from whichever spec came first (render-order dependence, #18)
+        sim = getWaveSim(JSON.stringify(simOpt), simOpt);
         sim.at(time);
       }
       Wt = { opts: waterOpts, flow, waves, sim, wind, calm: waterOpts.calm ?? 0.25 };
