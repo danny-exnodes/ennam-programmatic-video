@@ -46,14 +46,15 @@ export const freePort = () => new Promise((res, rej) => {
  * Start server/index.js on a free port with DATA_DIR=dataDir (sets process.env.PORT so
  * server/render.js talks to it). Resolves { port, stop, log } once /engine/engine.js answers,
  * or { error, log } when it does not come up. The child is killed by PID on exit/signals.
+ * `env` overrides the child's environment (e.g. { APP_PASSWORD } to run behind auth).
  */
-export async function startTempServer(dataDir) {
+export async function startTempServer(dataDir, { env = {} } = {}) {
   const port = await freePort();
   process.env.PORT = String(port);
   const logFile = path.join(dataDir, 'server.log');
   const fd = fs.openSync(logFile, 'w');
   const srv = spawn(process.execPath, [path.join(ROOT, 'server/index.js')], {
-    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, APP_PASSWORD: '' },
+    env: { ...process.env, PORT: String(port), DATA_DIR: dataDir, APP_PASSWORD: '', ...env },
     stdio: ['ignore', fd, fd],
   });
   const stop = () => {
@@ -63,8 +64,9 @@ export async function startTempServer(dataDir) {
   process.on('exit', stop);
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stop(); process.exit(2); });
   const log = () => { try { return fs.readFileSync(logFile, 'utf8'); } catch { return ''; } };
+  const probeAuth = env.APP_PASSWORD ? { authorization: 'Basic ' + Buffer.from(`team:${env.APP_PASSWORD}`).toString('base64') } : {};
   for (let i = 0; i < 60; i++) {
-    try { if ((await fetch(`http://127.0.0.1:${port}/engine/engine.js`)).ok) return { port, stop, log }; } catch { /* not up yet */ }
+    try { if ((await fetch(`http://127.0.0.1:${port}/engine/engine.js`, { headers: probeAuth })).ok) return { port, stop, log }; } catch { /* not up yet */ }
     await new Promise((r) => setTimeout(r, 250));
   }
   stop();

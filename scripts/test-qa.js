@@ -48,6 +48,11 @@ function qaProject(shots, id = 'pqa') {
     id, name: 'QA fixtures', width: 1920, height: 1080, fps: 30, brief: '',
     style: { grade: 'warm', vignette: 0.35, grain: 0.05, bloom: 0.25, letterbox: 0, palette: { primary: '#f08a12', accent: '#f5b54a', text: '#ffffff' } },
     assets: [], shots, voice: [], music: null, exports: [],
+    // Brand Kit snapshot (#8): same colors as the palette above (pixels unchanged) + a banned phrase
+    brand: { id: 'bqa', version: 1, locked: true, kit: {
+      name: 'QA kit', palette: [{ role: 'primary', color: '#f08a12' }, { role: 'accent', color: '#f5b54a' }, { role: 'text', color: '#ffffff' }],
+      fonts: { heading: 'sans', body: 'sans' }, fontFiles: [], bannedPhrases: ['cam kết 100%'], requiredPhrases: [],
+    } },
   };
 }
 

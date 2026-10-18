@@ -83,5 +83,11 @@ else
   [ $sc = 0 ] || { fail=1; echo "FAIL  test-seasonal (exit $sc)"; }
 fi
 
+# 10. Brand Kit (#8): CRUD + version, khoá/theo kit mới nhất, cảnh báo giấy phép font, route sau đăng nhập,
+#     render headless dùng màu/logo/font của kit (pixel), khối kit trong user turn đạo diễn, QA câu chữ cấm
+#     (server con; phần render chỉ Linux x64 như golden — tự bỏ qua local, FAIL trên CI)
+node scripts/test-brand.js; bc=$?
+[ $bc = 0 ] || { fail=1; echo "FAIL  test-brand (exit $bc)"; }
+
 [ $fail = 0 ] && echo "RESULT PASS" || echo "RESULT FAIL"
 exit $fail

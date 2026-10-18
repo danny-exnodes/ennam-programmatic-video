@@ -17,6 +17,37 @@ import { clearDewCache } from './fx/dew.js';
 
 export { MATERIALS, GRADES, ICON_NAMES };
 
+/** Asset name of the Brand Kit logo (`s.brand.logo`), loaded by loadAssets / loadBrandAssets. */
+export const BRAND_LOGO = 'brand-logo';
+
+/**
+ * Brand view of a project (pure): kit snapshot in `project.brand.kit` (server/brands.js) →
+ * colors by role, CSS font families for heading/body, logo asset name, outro. No kit → neutral
+ * values (built-in sans fonts, no logo, no colors) so shots without a kit render exactly as before.
+ */
+export function brandOf(project) {
+  const b = project?.brand;
+  const k = b && b.kit && typeof b.kit === 'object' ? b.kit : null;
+  const colors = {};
+  for (const c of k?.palette || []) if (c && typeof c.role === 'string' && typeof c.color === 'string') colors[c.role] = c.color;
+  const fam = (v) => {
+    if (!v || v === 'sans') return FONTS.sans;
+    if (v === 'serif') return FONTS.serif;
+    const f = (k?.fontFiles || []).find((x) => x && x.id === v);
+    return f && f.family ? `"${f.family}", ${FONTS.sans}` : FONTS.sans;
+  };
+  return {
+    key: k ? `${b.id}:${b.version}` : '',
+    id: k ? b.id : null,
+    name: k?.name || '',
+    logo: k?.logo?.file ? BRAND_LOGO : null,
+    colors,
+    fonts: { heading: fam(k?.fonts?.heading), body: fam(k?.fonts?.body) },
+    customBody: !!(k && k.fonts?.body && k.fonts.body !== 'sans'),
+    outro: k?.outro?.text || '',
+  };
+}
+
 export const TRANSITIONS = {
   cut: 'Cắt thẳng', fade: 'Mờ qua đen', dissolve: 'Hoà tan', flash: 'Loé sáng', push: 'Đẩy ngang',
   zoom: 'Zoom xuyên', whip: 'Lia nhanh', blur: 'Nhoè chuyển', wipe: 'Quét chéo', rise: 'Trượt lên',
@@ -80,6 +111,10 @@ export class Engine {
       }
     }
     this.timeline = this.computeTimeline();
+    const brand = brandOf(project);
+    // brandColor field defaults come from the kit → recollect declarations when the kit changes
+    if (this.brand && this.brand.key !== brand.key) this.fieldDecls.clear();
+    this.brand = brand;
   }
 
   setScale(scale) {
@@ -128,7 +163,12 @@ export class Engine {
     const sh = item.shot;
     const d = sh.duration;
     const style = this.project.style || {};
-    const palette = { primary: '#f08a12', accent: '#f5b54a', text: '#ffffff', ...(style.palette || {}) };
+    const brand = this.brand || brandOf(this.project);
+    // Brand Kit colors (by role) win over the project palette; no kit → unchanged
+    const palette = { primary: '#f08a12', accent: '#f5b54a', text: '#ffffff', ...(style.palette || {}), ...brand.colors };
+    const fonts = { ...FONTS, heading: brand.fonts.heading, body: brand.fonts.body };
+    // s.text font: 'heading' | 'body' → kit families; unspecified → kit body font when the kit sets one
+    const textFont = (o) => (o.font === 'heading' || o.font === 'body' ? { ...o, font: fonts[o.font] } : o.font == null && brand.customBody ? { ...o, font: fonts.body } : o);
     const cam = { zoom: 1, x: 0, y: 0, rotate: 0 };
     const getAsset = (name) => {
       const a = eng.assets.get(name);
@@ -145,7 +185,9 @@ export class Engine {
     const s = {
       t: localT, d, p: M.clamp(localT / d), W, H, frame: frameIndex, fps: this.project.fps || 30,
       shot: { id: sh.id, name: sh.name, index: item.index },
-      ctx, palette, fonts: FONTS, materials: MATERIALS,
+      ctx, palette, fonts, materials: MATERIALS,
+      /** Brand Kit of the project (see SHOT_API "Brand Kit"): logo asset name or null, colors, fonts, outro. */
+      brand: { id: brand.id, name: brand.name, logo: brand.logo, colors: { ...palette }, fonts: { heading: fonts.heading, body: fonts.body }, outro: brand.outro },
       // math
       clamp: M.clamp, lerp: M.lerp, map: M.map, smoothstep: M.smoothstep, ease: M.ease, TAU: M.TAU,
       rgba: M.rgba, mix: M.mix, noise: M.noise2, fbm: M.fbm, rand: M.rng,
@@ -241,7 +283,7 @@ export class Engine {
         try { fn(s.ctx); } finally { s.ctx.restore(); }
       },
       text: (str, o = {}) => withDepth(o.depth ?? 0, () => {
-        const r = text(s.ctx, localT, str, { color: palette.text, accent: palette.accent, ...o });
+        const r = text(s.ctx, localT, str, { color: palette.text, accent: palette.accent, ...textFont(o) });
         if (eng.textProbe) eng.probeText(s.ctx, str, o, r);
         return r;
       }),
@@ -333,6 +375,8 @@ export class Engine {
     key = String(key ?? '');
     if (!key) return def;
     const type = FIELD_TYPES.includes(o.type) ? o.type : typeof def === 'number' ? 'number' : 'text';
+    // { type: 'color', brandColor: 'accent' } → default = that Brand Kit color when the kit has the role
+    if (type === 'color' && o.brandColor && this.brand?.colors[o.brandColor]) def = this.brand.colors[o.brandColor];
     let decls = this.fieldDecls.get(sh.id);
     if (!decls) { decls = new Map(); this.fieldDecls.set(sh.id, decls); }
     if (!decls.has(key)) {
@@ -707,7 +751,48 @@ export async function loadFonts() {
   await Promise.all(specs.map((f) => document.fonts.load(f, 'Ááạẫ Sáng mịn tươi tắn').catch(() => null)));
 }
 
-/** Load project assets into the engine (browser). */
+const brandFaces = new Set(); // FontFace families already added to document.fonts
+
+/**
+ * Register + load the uploaded fonts of a Brand Kit snapshot (`project.brand.kit.fontFiles`) as
+ * FontFace (weight range 100–900: one file serves every weight without faux bold). Resolves true
+ * when a new face was added. urlFor({ file }) → URL of the file in the project's assets.
+ */
+export async function loadBrandFonts(kit, urlFor) {
+  if (!kit || typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return false;
+  let added = false;
+  await Promise.all((kit.fontFiles || []).filter((f) => f && f.file && f.family && !brandFaces.has(f.family)).map(async (f) => {
+    try {
+      const face = new FontFace(f.family, `url("${urlFor({ file: f.file })}")`, { weight: '100 900', style: 'normal' });
+      await face.load();
+      document.fonts.add(face);
+      brandFaces.add(f.family);
+      added = true;
+    } catch (e) {
+      console.warn(`Không tải được font kit "${f.name || f.family}": ${e.message || e}`);
+    }
+  }));
+  return added;
+}
+
+/** Brand Kit logo (as asset BRAND_LOGO) + fonts. Awaited by the render page before frames are taken. */
+export async function loadBrandAssets(engine, project, urlFor) {
+  const kit = project?.brand?.kit;
+  if (!kit) return;
+  const jobs = [loadBrandFonts(kit, urlFor)];
+  if (kit.logo?.file) {
+    jobs.push(new Promise((res) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { engine.setAsset(BRAND_LOGO, img, 'image'); res(); };
+      img.onerror = () => res();
+      img.src = urlFor({ file: kit.logo.file });
+    }));
+  }
+  await Promise.all(jobs);
+}
+
+/** Load project assets (and the Brand Kit logo/fonts) into the engine (browser). */
 export async function loadAssets(engine, project, urlFor) {
   const jobs = (project.assets || []).filter((a) => a.type === 'image' || a.type === 'video').map((a) => new Promise((res) => {
     if (a.type === 'image') {
@@ -724,5 +809,6 @@ export async function loadAssets(engine, project, urlFor) {
       v.src = urlFor(a);
     }
   }));
+  jobs.push(loadBrandAssets(engine, project, urlFor));
   await Promise.all(jobs);
 }
